@@ -151,6 +151,7 @@ func (cg *CodeGen) setVar(name string, val llvmValue.Value) {
 		cg.block.NewStore(val, alloca)
 		return
 	}
+	// New variable
 	alloca = cg.createEntryAlloca(name)
 	cg.block.NewStore(val, alloca)
 	if len(cg.scopes) > 0 {
@@ -160,8 +161,7 @@ func (cg *CodeGen) setVar(name string, val llvmValue.Value) {
 }
 
 func (cg *CodeGen) createEntryAlloca(name string) *ir.InstAlloca {
-	entryBlock := cg.fn.Blocks[0]
-	alloca := entryBlock.NewAlloca(sxValuePtr)
+	alloca := cg.block.NewAlloca(sxValuePtr)
 	alloca.SetName(name + ".ptr")
 	return alloca
 }
@@ -175,11 +175,13 @@ func (cg *CodeGen) getVar(name string) llvmValue.Value {
 }
 
 func (cg *CodeGen) resolveVar(name string) (*ir.InstAlloca, bool) {
+	// Check scopes first (innermost to outermost)
 	for i := len(cg.scopes) - 1; i >= 0; i-- {
 		if alloca, ok := cg.scopes[i][name]; ok {
 			return alloca, true
 		}
 	}
+	// Then check vars map
 	if alloca, ok := cg.vars[name]; ok {
 		return alloca, true
 	}

@@ -60,6 +60,7 @@ func (cg *CodeGen) compileStatement(stmt *parser.Statement) {
 func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	prevFn := cg.fn
 	prevBlock := cg.block
+	prevVars := cg.vars // save outer function's vars
 
 	params := make([]*ir.Param, len(fd.Params))
 	for i, p := range fd.Params {
@@ -71,6 +72,9 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	entry := fn.NewBlock("entry")
 	cg.fn = fn
 	cg.block = entry
+	cg.vars = make(map[string]*ir.InstAlloca)
+	prevScopes := cg.scopes
+	cg.scopes = []map[string]*ir.InstAlloca{} // completely fresh scope stack
 	cg.pushScope()
 
 	for i, p := range fd.Params {
@@ -90,6 +94,8 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	cg.popScope()
 	cg.fn = prevFn
 	cg.block = prevBlock
+	cg.vars = prevVars
+	cg.scopes = prevScopes
 }
 
 func (cg *CodeGen) compileIfStmt(ifStmt *parser.IfStmt) {
