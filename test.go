@@ -77,8 +77,8 @@ func extractTests(filename string) []TestCase {
 	var tests []TestCase
 	for i, line := range strings.Split(string(source), "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "-- test:") {
-			expr := strings.TrimSpace(strings.TrimPrefix(trimmed, "-- test:"))
+		if expr, ok := strings.CutPrefix(trimmed, "-- test:"); ok {
+			expr = strings.TrimSpace(expr)
 			if expr != "" {
 				tests = append(tests, TestCase{Expr: expr, Line: i + 1})
 			}
