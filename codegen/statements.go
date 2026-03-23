@@ -83,7 +83,16 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 		cg.scopes[len(cg.scopes)-1][p.Name] = alloca
 	}
 
-	for _, stmt := range fd.Body.Statements {
+	for i, stmt := range fd.Body.Statements {
+		isLast := i == len(fd.Body.Statements)-1
+
+		// Last ExprStmt in a function: return its value (implicit return)
+		if isLast && stmt.ExprStmt != nil && cg.block.Term == nil {
+			val := cg.compileExpr(stmt.ExprStmt.Expr)
+			cg.block.NewRet(val)
+			continue
+		}
+
 		cg.compileStatement(stmt)
 	}
 
