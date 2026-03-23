@@ -20,6 +20,8 @@ func main() {
 	switch os.Args[1] {
 	case "build":
 		buildCommand()
+	case "test":
+		testCommand()
 	case "lib":
 		libCommand()
 	case "help", "--help", "-h":
@@ -58,6 +60,8 @@ func printHelp() {
 	fmt.Println("  sintax <file.sx>           Run a program file")
 	fmt.Println("  sintax build <file.sx>     Compile to binary")
 	fmt.Println("  sintax build <f.sx> -o out Compile with custom name")
+	fmt.Println("  sintax test                Test all .sx files")
+	fmt.Println("  sintax test <file.sx>      Test specific file")
 	fmt.Println("  sintax lib                 List libraries")
 	fmt.Println("  sintax lib <name>          Library details")
 	fmt.Println("  sintax help                Show help")

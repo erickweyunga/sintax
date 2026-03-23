@@ -1,6 +1,8 @@
 -- This is a Sintax program!
 
--- Function
+-- test: add(5, 3) == 8
+-- test: add(0, 0) == 0
+-- test: add(-1, 1) == 0
 fn (a, b) add:
     a + b
 

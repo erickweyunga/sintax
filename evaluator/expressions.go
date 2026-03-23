@@ -332,6 +332,30 @@ func evalComparisonOp(op string, left, right object.Object) object.Object {
 		}
 	}
 
+	// Bool equality
+	lb, lbok := left.(*object.BoolObj)
+	rb, rbok := right.(*object.BoolObj)
+	if lbok && rbok {
+		switch op {
+		case "==":
+			return &object.BoolObj{Value: lb.Value == rb.Value}
+		case "!=":
+			return &object.BoolObj{Value: lb.Value != rb.Value}
+		}
+	}
+
+	// Null equality
+	if _, lok := left.(*object.NullObj); lok {
+		if _, rok := right.(*object.NullObj); rok {
+			if op == "==" {
+				return &object.BoolObj{Value: true}
+			}
+			if op == "!=" {
+				return &object.BoolObj{Value: false}
+			}
+		}
+	}
+
 	if op == "in" {
 		return evalMembership(left, right)
 	}

@@ -1,0 +1,100 @@
+--{
+Core language tests.
+Run with: sintax test examples/test_core.sx
+}--
+
+-- test: add(1, 2) == 3
+-- test: add(-5, 5) == 0
+-- test: add(0.5, 0.5) == 1
+fn (a, b) add:
+    a + b
+
+-- test: square(5) == 25
+-- test: square(-3) == 9
+-- test: square(0) == 0
+fn (n) square:
+    n * n
+
+-- test: factorial(0) == 1
+-- test: factorial(1) == 1
+-- test: factorial(5) == 120
+-- test: factorial(10) == 3628800
+fn (num n) num factorial:
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+-- test: fib(0) == 0
+-- test: fib(1) == 1
+-- test: fib(10) == 55
+fn (num n) num fib:
+    if n <= 1:
+        return n
+    else:
+        return fib(n - 1) + fib(n - 2)
+
+-- test: abs_val(-5) == 5
+-- test: abs_val(5) == 5
+-- test: abs_val(0) == 0
+fn (num n) num abs_val:
+    if n < 0:
+        return -n
+    else:
+        return n
+
+-- test: is_even(4) == true
+-- test: is_even(7) == false
+-- test: is_even(0) == true
+fn (num n) bool is_even:
+    return n % 2 == 0
+
+-- test: greet("World") == "Hello, World!"
+-- test: greet("Sintax") == "Hello, Sintax!"
+fn (str name) str greet:
+    return "Hello, {name}!"
+
+-- test: 2 + 3 == 5
+-- test: 10 - 3 == 7
+-- test: 4 * 5 == 20
+-- test: 10 / 2 == 5
+-- test: 17 % 5 == 2
+-- test: 2 ** 10 == 1024
+-- test: -5 + 5 == 0
+
+-- test: 5 > 3
+-- test: 3 < 5
+-- test: 5 >= 5
+-- test: 5 <= 5
+-- test: 5 == 5
+-- test: 5 != 3
+
+-- test: true and true
+-- test: not false
+-- test: false or true
+-- test: not (true and false)
+
+-- test: "hello" + " " + "world" == "hello world"
+-- test: len("hello") == 5
+-- test: len([1, 2, 3]) == 3
+-- test: len({"a": 1}) == 1
+
+-- test: type(42) == "num"
+-- test: type("hi") == "str"
+-- test: type(true) == "bool"
+-- test: type([]) == "list"
+-- test: type({}) == "dict"
+-- test: type(null) == "null"
+
+-- test: num("42") == 42
+-- test: str(42) == "42"
+-- test: bool(1) == true
+-- test: bool(0) == false
+
+-- test: "a" in ["a", "b", "c"]
+-- test: not ("z" in ["a", "b", "c"])
+-- test: "hello" in "hello world"
+
+-- test: err(try(1 / 0))
+-- test: not err(try(1 + 1))
+-- test: try(5 + 3) == 8
