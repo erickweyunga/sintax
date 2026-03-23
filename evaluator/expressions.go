@@ -91,41 +91,55 @@ func evalUnary(u *parser.Unary, env *Environment) object.Object {
 }
 
 func evalPrimary(p *parser.Primary, env *Environment) object.Object {
+	// Evaluate base value
+	var result object.Object
 	switch {
 	case p.IndexAccess != nil:
-		return evalIndexAccess(p.IndexAccess, env)
+		result = evalIndexAccess(p.IndexAccess, env)
 	case p.FuncCall != nil:
-		return evalFuncCall(p.FuncCall, env)
+		result = evalFuncCall(p.FuncCall, env)
 	case p.DictLit != nil:
-		return evalDictLit(p.DictLit, env)
+		result = evalDictLit(p.DictLit, env)
 	case p.ListLit != nil:
-		return evalListLit(p.ListLit, env)
+		result = evalListLit(p.ListLit, env)
 	case p.Number != nil:
-		return &object.NumberObj{Value: *p.Number}
+		result = &object.NumberObj{Value: *p.Number}
 	case p.String != nil:
 		s := (*p.String)[1 : len(*p.String)-1]
 		s = preprocessor.ProcessEscapes(s)
 		s = interpolateString(s, env)
-		return &object.StringObj{Value: s}
+		result = &object.StringObj{Value: s}
 	case p.Ident != nil:
 		switch *p.Ident {
 		case "true":
-			return &object.BoolObj{Value: true}
+			result = &object.BoolObj{Value: true}
 		case "false":
-			return &object.BoolObj{Value: false}
+			result = &object.BoolObj{Value: false}
 		case "null":
-			return object.Null
+			result = object.Null
 		default:
 			obj, ok := env.Get(*p.Ident)
 			if !ok {
 				runtimeError("Undefined name: '%s'", *p.Ident)
 			}
-			return obj
+			result = obj
 		}
 	case p.SubExpr != nil:
-		return evalExpr(p.SubExpr, env)
+		result = evalExpr(p.SubExpr, env)
+	default:
+		result = object.Null
 	}
-	return object.Null
+
+	// Apply method chain: value.method(args).method(args)...
+	for _, mc := range p.Methods {
+		args := make([]object.Object, len(mc.Args))
+		for i, arg := range mc.Args {
+			args[i] = evalExpr(arg, env)
+		}
+		result = evalMethod(result, mc.Name, args)
+	}
+
+	return result
 }
 
 func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
@@ -297,6 +311,166 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		}
 	}
 	return result
+}
+
+// --- Methods ---
+
+func evalMethod(obj object.Object, method string, args []object.Object) object.Object {
+	switch o := obj.(type) {
+	case *object.StringObj:
+		return evalStringMethod(o, method, args)
+	case *object.ListObj:
+		return evalListMethod(o, method, args)
+	case *object.DictObj:
+		return evalDictMethod(o, method, args)
+	case *object.NumberObj:
+		return evalNumberMethod(o, method, args)
+	}
+	runtimeError("'%s' has no method '%s'", object.TypeName(obj), method)
+	return object.Null
+}
+
+func evalStringMethod(s *object.StringObj, method string, args []object.Object) object.Object {
+	switch method {
+	case "len":
+		return &object.NumberObj{Value: float64(len(s.Value))}
+	case "upper":
+		return &object.StringObj{Value: strings.ToUpper(s.Value)}
+	case "lower":
+		return &object.StringObj{Value: strings.ToLower(s.Value)}
+	case "trim":
+		return &object.StringObj{Value: strings.TrimSpace(s.Value)}
+	case "split":
+		if len(args) != 1 {
+			runtimeError("str.split() requires 1 argument")
+		}
+		sep := args[0].(*object.StringObj).Value
+		parts := strings.Split(s.Value, sep)
+		elements := make([]object.Object, len(parts))
+		for i, p := range parts {
+			elements[i] = &object.StringObj{Value: p}
+		}
+		return &object.ListObj{Elements: elements}
+	case "replace":
+		if len(args) != 2 {
+			runtimeError("str.replace() requires 2 arguments")
+		}
+		old := args[0].(*object.StringObj).Value
+		new_ := args[1].(*object.StringObj).Value
+		return &object.StringObj{Value: strings.ReplaceAll(s.Value, old, new_)}
+	case "contains":
+		if len(args) != 1 {
+			runtimeError("str.contains() requires 1 argument")
+		}
+		return &object.BoolObj{Value: strings.Contains(s.Value, args[0].(*object.StringObj).Value)}
+	case "starts_with":
+		if len(args) != 1 {
+			runtimeError("str.starts_with() requires 1 argument")
+		}
+		return &object.BoolObj{Value: strings.HasPrefix(s.Value, args[0].(*object.StringObj).Value)}
+	case "ends_with":
+		if len(args) != 1 {
+			runtimeError("str.ends_with() requires 1 argument")
+		}
+		return &object.BoolObj{Value: strings.HasSuffix(s.Value, args[0].(*object.StringObj).Value)}
+	case "type":
+		return &object.StringObj{Value: "str"}
+	}
+	runtimeError("str has no method '%s'", method)
+	return object.Null
+}
+
+func evalListMethod(l *object.ListObj, method string, args []object.Object) object.Object {
+	switch method {
+	case "len":
+		return &object.NumberObj{Value: float64(len(l.Elements))}
+	case "push":
+		if len(args) != 1 {
+			runtimeError("list.push() requires 1 argument")
+		}
+		l.Elements = append(l.Elements, args[0])
+		return l
+	case "pop":
+		if len(args) != 1 {
+			runtimeError("list.pop() requires 1 argument (index)")
+		}
+		idx := int(args[0].(*object.NumberObj).Value)
+		if idx < 0 || idx >= len(l.Elements) {
+			runtimeError("Index %d out of range (length %d)", idx, len(l.Elements))
+		}
+		removed := l.Elements[idx]
+		l.Elements = append(l.Elements[:idx], l.Elements[idx+1:]...)
+		return removed
+	case "contains":
+		if len(args) != 1 {
+			runtimeError("list.contains() requires 1 argument")
+		}
+		for _, el := range l.Elements {
+			if object.ObjectsEqual(args[0], el) {
+				return &object.BoolObj{Value: true}
+			}
+		}
+		return &object.BoolObj{Value: false}
+	case "reverse":
+		reversed := make([]object.Object, len(l.Elements))
+		for i, el := range l.Elements {
+			reversed[len(l.Elements)-1-i] = el
+		}
+		return &object.ListObj{Elements: reversed}
+	case "join":
+		if len(args) != 1 {
+			runtimeError("list.join() requires 1 argument")
+		}
+		sep := args[0].(*object.StringObj).Value
+		parts := make([]string, len(l.Elements))
+		for i, el := range l.Elements {
+			parts[i] = el.Inspect()
+		}
+		return &object.StringObj{Value: strings.Join(parts, sep)}
+	case "type":
+		return &object.StringObj{Value: "list"}
+	}
+	runtimeError("list has no method '%s'", method)
+	return object.Null
+}
+
+func evalDictMethod(d *object.DictObj, method string, args []object.Object) object.Object {
+	switch method {
+	case "len":
+		return &object.NumberObj{Value: float64(len(d.Pairs))}
+	case "keys":
+		elements := make([]object.Object, len(d.Keys))
+		for i, k := range d.Keys {
+			elements[i] = &object.StringObj{Value: k}
+		}
+		return &object.ListObj{Elements: elements}
+	case "values":
+		elements := make([]object.Object, len(d.Keys))
+		for i, k := range d.Keys {
+			elements[i] = d.Pairs[k]
+		}
+		return &object.ListObj{Elements: elements}
+	case "has":
+		if len(args) != 1 {
+			runtimeError("dict.has() requires 1 argument")
+		}
+		key := args[0].(*object.StringObj).Value
+		_, exists := d.Pairs[key]
+		return &object.BoolObj{Value: exists}
+	case "type":
+		return &object.StringObj{Value: "dict"}
+	}
+	runtimeError("dict has no method '%s'", method)
+	return object.Null
+}
+
+func evalNumberMethod(n *object.NumberObj, method string, args []object.Object) object.Object {
+	switch method {
+	case "type":
+		return &object.StringObj{Value: "num"}
+	}
+	runtimeError("num has no method '%s'", method)
+	return object.Null
 }
 
 // --- Operators ---

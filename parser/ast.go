@@ -176,14 +176,21 @@ type Unary struct {
 }
 
 type Primary struct {
-	IndexAccess *IndexAccess `( @@`
-	FuncCall    *FuncCall    `| @@`
-	DictLit     *DictLit     `| @@`
-	ListLit     *ListLit     `| @@`
-	Number      *float64     `| @Number`
-	String      *string      `| @String`
-	Ident       *string      `| @Ident`
-	SubExpr     *Expr        `| "(" @@ ")" )`
+	IndexAccess *IndexAccess  `( @@`
+	FuncCall    *FuncCall     `| @@`
+	DictLit     *DictLit      `| @@`
+	ListLit     *ListLit      `| @@`
+	Number      *float64      `| @Number`
+	String      *string       `| @String`
+	Ident       *string       `| @Ident`
+	SubExpr     *Expr         `| "(" @@ ")" )`
+	Methods     []*MethodCall `@@*`
+}
+
+// MethodCall: .name(args)
+type MethodCall struct {
+	Name string  `"." @Ident "("`
+	Args []*Expr `( @@ ( "," @@ )* )? ")"`
 }
 
 // IndexAccess: name[index]

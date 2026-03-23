@@ -1,0 +1,30 @@
+-- Method call tests
+
+-- test: "hello".len() == 5
+-- test: "hello".upper() == "HELLO"
+-- test: "HELLO".lower() == "hello"
+-- test: "  hi  ".trim() == "hi"
+-- test: "hello".contains("ell") == true
+-- test: "hello".contains("xyz") == false
+-- test: "hello".starts_with("hel") == true
+-- test: "hello".ends_with("llo") == true
+-- test: "hello world".replace("world", "x") == "hello x"
+
+-- test: [1,2,3].len() == 3
+-- test: [1,2,3].contains(2) == true
+-- test: [1,2,3].contains(9) == false
+-- test: [1,2,3].reverse().len() == 3
+-- test: ["a","b"].join("-") == "a-b"
+
+-- test: {"a":1}.len() == 1
+-- test: {"a":1}.has("a") == true
+-- test: {"a":1}.has("z") == false
+-- test: {"a":1,"b":2}.keys().len() == 2
+
+-- test: "hello".upper().lower() == "hello"
+-- test: "  HELLO  ".trim().lower() == "hello"
+-- test: "a-b-c".split("-").join(",") == "a,b,c"
+
+-- test: "hello".type() == "str"
+-- test: [1,2].type() == "list"
+-- test: {"a":1}.type() == "dict"
