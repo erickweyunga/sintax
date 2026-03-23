@@ -8,6 +8,7 @@ import (
 	"github.com/erickweyunga/sintax/object"
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
+	"github.com/erickweyunga/sintax/stdlib"
 )
 
 // SourceInfo holds original source context for error reporting.
@@ -26,10 +27,10 @@ type RuntimeError struct {
 
 func (e RuntimeError) Error() string {
 	if e.Line > 0 && e.Source != "" {
-		return fmt.Sprintf("[mstari %d] %s\n  | %s", e.Line, e.Message, e.Source)
+		return fmt.Sprintf("[line %d] %s\n  | %s", e.Line, e.Message, e.Source)
 	}
 	if e.Line > 0 {
-		return fmt.Sprintf("[mstari %d] %s", e.Line, e.Message)
+		return fmt.Sprintf("[line %d] %s", e.Line, e.Message)
 	}
 	return e.Message
 }
@@ -65,6 +66,43 @@ func recoverError(err *error) {
 			panic(r)
 		}
 	}
+}
+
+// importedFuncs holds stdlib functions registered via use.
+// Key format: "module/func" for namespaced, "func" for wildcard/specific.
+var importedFuncs = map[string]stdlib.StdFn{}
+
+// RegisterImports processes use directives and loads stdlib functions.
+func RegisterImports(imports []preprocessor.Import) error {
+	importedFuncs = map[string]stdlib.StdFn{}
+
+	for _, imp := range imports {
+		mod, ok := stdlib.Registry[imp.Module]
+		if !ok {
+			return fmt.Errorf("Error: unknown module '%s'", imp.Module)
+		}
+
+		switch imp.Function {
+		case "":
+			// Namespaced: math/sqrt → math__sqrt (preprocessor rewrites the call)
+			for name, fn := range mod.Funcs {
+				importedFuncs[imp.Module+"__"+name] = fn
+			}
+		case "*":
+			// Wildcard: import all directly
+			for name, fn := range mod.Funcs {
+				importedFuncs[name] = fn
+			}
+		default:
+			// Specific: import one function directly
+			fn, ok := mod.Funcs[imp.Function]
+			if !ok {
+				return fmt.Errorf("Error: '%s' not found in module '%s'", imp.Function, imp.Module)
+			}
+			importedFuncs[imp.Function] = fn
+		}
+	}
+	return nil
 }
 
 // Eval evaluates a program and returns any runtime error.
@@ -222,7 +260,7 @@ func evalForStmt(fs *parser.ForStmt, env *Environment) object.Object {
 			items = append(items, &object.StringObj{Value: string(ch)})
 		}
 	default:
-		runtimeError("'kwa' inahitaji safu, kamusi, au tungo")
+		runtimeError("'for' requires a list, dict, or str")
 	}
 
 	var result object.Object = object.Null
@@ -256,7 +294,7 @@ func evalReturnStmt(ret *parser.ReturnStmt, env *Environment) object.Object {
 func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 	obj, ok := env.Get(ia.Name)
 	if !ok {
-		runtimeError("Jina halijulikani: '%s'", ia.Name)
+		runtimeError("Undefined name: '%s'", ia.Name)
 	}
 
 	idx := evalExpr(ia.Index, env)
@@ -266,7 +304,7 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 	case *object.DictObj:
 		key, ok := idx.(*object.StringObj)
 		if !ok {
-			runtimeError("Ufunguo wa kamusi lazima uwe tungo")
+			runtimeError("Dict key must be a str")
 		}
 		if _, exists := o.Pairs[key.Value]; !exists {
 			o.Keys = append(o.Keys, key.Value)
@@ -275,15 +313,15 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 	case *object.ListObj:
 		idxNum, ok := idx.(*object.NumberObj)
 		if !ok {
-			runtimeError("Fahirisi lazima iwe nambari")
+			runtimeError("Index must be a num")
 		}
 		i := int(idxNum.Value)
 		if i < 0 || i >= len(o.Elements) {
-			runtimeError("Fahirisi %d nje ya masafa (urefu %d)", i, len(o.Elements))
+			runtimeError("Index %d out of range (length %d)", i, len(o.Elements))
 		}
 		o.Elements[i] = val
 	default:
-		runtimeError("'%s' si safu wala kamusi", ia.Name)
+		runtimeError("'%s' is not a list or dict", ia.Name)
 	}
 	return val
 }
@@ -291,7 +329,7 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 func evalCompoundAssign(ca *parser.CompoundAssign, env *Environment) object.Object {
 	obj, ok := env.Get(ca.Name)
 	if !ok {
-		runtimeError("Jina halijulikani: '%s'", ca.Name)
+		runtimeError("Undefined name: '%s'", ca.Name)
 	}
 	right := evalExpr(ca.Value, env)
 	// Map += to +, -= to -, etc.
@@ -301,7 +339,7 @@ func evalCompoundAssign(ca *parser.CompoundAssign, env *Environment) object.Obje
 	if typ, ok := env.GetType(ca.Name); ok && typ != "" {
 		valType := object.TypeName(result)
 		if valType != typ {
-			runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", ca.Name, valType, typ)
+			runtimeError("Type mismatch: '%s' is %s, expected %s", ca.Name, valType, typ)
 		}
 	}
 	env.Set(ca.Name, result)
@@ -313,7 +351,7 @@ func evalTypedAssign(ta *parser.TypedAssign, env *Environment) object.Object {
 	expectedType := object.NormalizeType(ta.Type)
 	valType := object.TypeName(val)
 	if valType != expectedType {
-		runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", ta.Name, valType, expectedType)
+		runtimeError("Type mismatch: '%s' is %s, expected %s", ta.Name, valType, expectedType)
 	}
 	env.SetTyped(ta.Name, expectedType, val)
 	return val
@@ -325,7 +363,7 @@ func evalAssignment(assign *parser.Assignment, env *Environment) object.Object {
 	if typ, ok := env.GetType(assign.Name); ok && typ != "" {
 		valType := object.TypeName(val)
 		if valType != typ {
-			runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", assign.Name, valType, typ)
+			runtimeError("Type mismatch: '%s' is %s, expected %s", assign.Name, valType, typ)
 		}
 	}
 	env.Set(assign.Name, val)
@@ -394,7 +432,7 @@ func evalUnary(u *parser.Unary, env *Environment) object.Object {
 		val := evalUnary(u.Neg, env)
 		num, ok := val.(*object.NumberObj)
 		if !ok {
-			runtimeError("'-' inahitaji nambari")
+			runtimeError("'-' requires a num")
 		}
 		return &object.NumberObj{Value: -num.Value}
 	}
@@ -423,18 +461,18 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 		return &object.StringObj{Value: s}
 	case p.Ident != nil:
 		name := *p.Ident
-		if name == "kweli" {
+		if name == "true" {
 			return &object.BoolObj{Value: true}
 		}
-		if name == "sikweli" {
+		if name == "false" {
 			return &object.BoolObj{Value: false}
 		}
-		if name == "tupu" {
+		if name == "null" {
 			return object.Null
 		}
 		obj, ok := env.Get(name)
 		if !ok {
-			runtimeError("Jina halijulikani: '%s'", name)
+			runtimeError("Undefined name: '%s'", name)
 		}
 		return obj
 	case p.SubExpr != nil:
@@ -446,7 +484,7 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 	obj, ok := env.Get(ia.Name)
 	if !ok {
-		runtimeError("Jina halijulikani: '%s'", ia.Name)
+		runtimeError("Undefined name: '%s'", ia.Name)
 	}
 
 	idx := evalExpr(ia.Index, env)
@@ -455,7 +493,7 @@ func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 	case *object.DictObj:
 		key, ok := idx.(*object.StringObj)
 		if !ok {
-			runtimeError("Ufunguo wa kamusi lazima uwe tungo")
+			runtimeError("Dict key must be a str")
 		}
 		val, exists := o.Pairs[key.Value]
 		if !exists {
@@ -465,25 +503,25 @@ func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 	case *object.ListObj:
 		idxNum, ok := idx.(*object.NumberObj)
 		if !ok {
-			runtimeError("Fahirisi lazima iwe nambari")
+			runtimeError("Index must be a num")
 		}
 		i := int(idxNum.Value)
 		if i < 0 || i >= len(o.Elements) {
-			runtimeError("Fahirisi %d nje ya masafa (urefu %d)", i, len(o.Elements))
+			runtimeError("Index %d out of range (length %d)", i, len(o.Elements))
 		}
 		return o.Elements[i]
 	case *object.StringObj:
 		idxNum, ok := idx.(*object.NumberObj)
 		if !ok {
-			runtimeError("Fahirisi lazima iwe nambari")
+			runtimeError("Index must be a num")
 		}
 		i := int(idxNum.Value)
 		if i < 0 || i >= len(o.Value) {
-			runtimeError("Fahirisi %d nje ya masafa (urefu %d)", i, len(o.Value))
+			runtimeError("Index %d out of range (length %d)", i, len(o.Value))
 		}
 		return &object.StringObj{Value: string(o.Value[i])}
 	default:
-		runtimeError("'%s' haiwezi kufikia kwa fahirisi", ia.Name)
+		runtimeError("'%s' is not indexable", ia.Name)
 	}
 	return object.Null
 }
@@ -495,7 +533,7 @@ func evalDictLit(dl *parser.DictLit, env *Environment) object.Object {
 		key := evalExpr(entry.Key, env)
 		keyStr, ok := key.(*object.StringObj)
 		if !ok {
-			runtimeError("Ufunguo wa kamusi lazima uwe tungo")
+			runtimeError("Dict key must be a str")
 		}
 		pairs[keyStr.Value] = evalExpr(entry.Value, env)
 		keys = append(keys, keyStr.Value)
@@ -549,25 +587,38 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		return fn(fc.Args, env)
 	}
 
+	// Check imported stdlib functions (direct name or namespaced)
+	if fn, ok := importedFuncs[fc.Name]; ok {
+		args := make([]object.Object, len(fc.Args))
+		for i, arg := range fc.Args {
+			args[i] = evalExpr(arg, env)
+		}
+		result, err := fn(args)
+		if err != nil {
+			runtimeError("%s", err.Error())
+		}
+		return result
+	}
+
 	// User-defined functions
 	obj, ok := env.Get(fc.Name)
 	if !ok {
-		runtimeError("Unda haijulikani: '%s'", fc.Name)
+		runtimeError("Undefined function: '%s'", fc.Name)
 	}
 
 	fn, ok := obj.(*object.FuncObj)
 	if !ok {
-		runtimeError("'%s' si unda", fc.Name)
+		runtimeError("'%s' is not a function", fc.Name)
 	}
 
 	if len(fc.Args) != len(fn.Params) {
-		runtimeError("Unda '%s' inahitaji hoja %d, imepata %d", fn.Name, len(fn.Params), len(fc.Args))
+		runtimeError("Function '%s' expects %d args, got %d", fn.Name, len(fn.Params), len(fc.Args))
 	}
 
 	// Resolve the closure environment
 	closureEnv, ok := fn.Env.(*Environment)
 	if !ok {
-		runtimeError("Mazingira ya unda si sahihi")
+		runtimeError("Invalid function environment")
 	}
 
 	fnEnv := NewEnclosed(closureEnv)
@@ -577,7 +628,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		if param.Type != "" {
 			valType := object.TypeName(val)
 			if valType != param.Type {
-				runtimeError("Unda '%s' hoja '%s' ni %s, inahitaji %s", fn.Name, param.Name, valType, param.Type)
+				runtimeError("Function '%s' arg '%s' is %s, expected %s", fn.Name, param.Name, valType, param.Type)
 			}
 		}
 		fnEnv.Set(param.Name, val)
@@ -589,7 +640,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		if fn.ReturnType != "" {
 			retType := object.TypeName(ret.Value)
 			if retType != fn.ReturnType {
-				runtimeError("Unda '%s' rudisha %s, inahitaji %s", fn.Name, retType, fn.ReturnType)
+				runtimeError("Function '%s' returns %s, expected %s", fn.Name, retType, fn.ReturnType)
 			}
 		}
 		return ret.Value
@@ -598,7 +649,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 	if fn.ReturnType != "" && result != nil {
 		retType := object.TypeName(result)
 		if retType != fn.ReturnType {
-			runtimeError("Unda '%s' rudisha %s, inahitaji %s", fn.Name, retType, fn.ReturnType)
+			runtimeError("Function '%s' returns %s, expected %s", fn.Name, retType, fn.ReturnType)
 		}
 	}
 	return result
@@ -638,12 +689,12 @@ func evalComparisonOp(op string, left, right object.Object) object.Object {
 		}
 	}
 
-	// ktk membership operator
-	if op == "ktk" {
+	// in membership operator
+	if op == "in" {
 		return evalMembership(left, right)
 	}
 
-	runtimeError("Operesheni '%s' haiwezekani kwa aina hizi", op)
+	runtimeError("Operation '%s' not supported for these types", op)
 	return object.Null
 }
 
@@ -659,18 +710,18 @@ func evalMembership(needle, haystack object.Object) object.Object {
 	case *object.DictObj:
 		key, ok := needle.(*object.StringObj)
 		if !ok {
-			runtimeError("Ufunguo wa kamusi lazima uwe tungo")
+			runtimeError("Dict key must be a str")
 		}
 		_, exists := h.Pairs[key.Value]
 		return &object.BoolObj{Value: exists}
 	case *object.StringObj:
 		sub, ok := needle.(*object.StringObj)
 		if !ok {
-			runtimeError("ktk kwa tungo inahitaji tungo")
+			runtimeError("'in' for str requires a str")
 		}
 		return &object.BoolObj{Value: strings.Contains(h.Value, sub.Value)}
 	default:
-		runtimeError("ktk haiwezi kutumika kwa aina hii")
+		runtimeError("'in' not supported for this type")
 	}
 	return &object.BoolObj{Value: false}
 }
@@ -687,7 +738,7 @@ func evalArithOp(op string, left, right object.Object) object.Object {
 	ln, lok := left.(*object.NumberObj)
 	rn, rok := right.(*object.NumberObj)
 	if !lok || !rok {
-		runtimeError("Operesheni '%s' inahitaji nambari", op)
+		runtimeError("Operation '%s' requires num values", op)
 	}
 
 	switch op {
@@ -699,12 +750,12 @@ func evalArithOp(op string, left, right object.Object) object.Object {
 		return &object.NumberObj{Value: ln.Value * rn.Value}
 	case "/":
 		if rn.Value == 0 {
-			runtimeError("Haiwezekani kugawanya na sifuri")
+			runtimeError("Division by zero")
 		}
 		return &object.NumberObj{Value: ln.Value / rn.Value}
 	case "%":
 		if rn.Value == 0 {
-			runtimeError("Haiwezekani kugawanya na sifuri")
+			runtimeError("Division by zero")
 		}
 		return &object.NumberObj{Value: float64(int64(ln.Value) % int64(rn.Value))}
 	case "**":
@@ -713,4 +764,3 @@ func evalArithOp(op string, left, right object.Object) object.Object {
 
 	return object.Null
 }
-

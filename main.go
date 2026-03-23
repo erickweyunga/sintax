@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/erickweyunga/sintax/codegen"
+	"github.com/erickweyunga/sintax/stdlib"
 	"github.com/erickweyunga/sintax/evaluator"
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
@@ -23,6 +24,8 @@ func main() {
 	switch os.Args[1] {
 	case "build":
 		buildCommand()
+	case "lib":
+		libCommand()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -40,15 +43,20 @@ func runCommand() {
 		LineMap:  result.LineMap,
 	})
 
+	if err := evaluator.RegisterImports(result.Imports); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	if err := evaluator.Eval(program); err != nil {
-		fmt.Fprintf(os.Stderr, "Kosa: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func buildCommand() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Matumizi: sintax build <faili.sx> [-o jina]\n")
+		fmt.Fprintf(os.Stderr, "Usage: sintax build <file.sx> [-o name]\n")
 		os.Exit(1)
 	}
 
@@ -64,7 +72,7 @@ func buildCommand() {
 	}
 
 	if filename == "" {
-		fmt.Fprintf(os.Stderr, "Kosa: Hakuna faili la .sx\n")
+		fmt.Fprintf(os.Stderr, "Error: No .sx file specified\n")
 		os.Exit(1)
 	}
 
@@ -80,14 +88,14 @@ func buildCommand() {
 
 	irFile := outputName + ".ll"
 	if err := os.WriteFile(irFile, []byte(llvmIR), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Kosa: Haiwezi kuandika faili la IR: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Cannot write IR file: %v\n", err)
 		os.Exit(1)
 	}
 	defer os.Remove(irFile)
 
 	runtimePath := findRuntime()
 
-	fmt.Printf("Inapakia Programu %s → %s...\n", filename, outputName)
+	fmt.Printf("Compiling %s → %s...\n", filename, outputName)
 
 	args := []string{"-O2", "-Wno-override-module", "-o", outputName, irFile, runtimePath, "-lm"}
 
@@ -112,33 +120,58 @@ func buildCommand() {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Kosa la mkusanyiko: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Compilation error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Imefanikiwa! Anzisha Programu: ./%s\n", outputName)
+	fmt.Printf("Done! Run: ./%s\n", outputName)
+}
+
+func libCommand() {
+	if len(os.Args) < 3 {
+		// List all modules
+		fmt.Println("Sintax Libraries:")
+		fmt.Println()
+		for _, name := range stdlib.ListModules() {
+			mod := stdlib.Registry[name]
+			fmt.Printf("  %-12s %s\n", name, mod.Desc)
+		}
+		fmt.Println()
+		fmt.Println("Use: sintax lib <name> for details")
+		return
+	}
+
+	// Describe specific module
+	desc, err := stdlib.Describe(os.Args[2])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(desc)
 }
 
 func printHelp() {
 	fmt.Println("Sintax")
 	fmt.Println()
-	fmt.Println("Matumizi:")
+	fmt.Println("Usage:")
 	fmt.Println("  sintax                     REPL")
-	fmt.Println("  sintax <faili.sx>          Anzisha Programu faili")
-	fmt.Println("  sintax build <faili.sx>    Kusanya hadi binary")
-	fmt.Println("  sintax build <f.sx> -o out Kusanya na jina maalum")
-	fmt.Println("  sintax help                Onyesha msaada huu")
+	fmt.Println("  sintax <file.sx>           Run a program file")
+	fmt.Println("  sintax build <file.sx>     Compile to binary")
+	fmt.Println("  sintax build <f.sx> -o out Compile with custom name")
+	fmt.Println("  sintax lib                 List libraries")
+	fmt.Println("  sintax lib <name>          Library details")
+	fmt.Println("  sintax help                Show help")
 }
 
 func parseFile(filename string) (*parser.Program, string, preprocessor.Result) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Kosa: Faili '%s' haipo\n", filename)
+		fmt.Fprintf(os.Stderr, "Error: File '%s' not found\n", filename)
 		os.Exit(1)
 	}
 
 	source, err := os.ReadFile(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Kosa: Haiwezi kusoma faili '%s'\n", filename)
+		fmt.Fprintf(os.Stderr, "Error: Cannot read file '%s'\n", filename)
 		os.Exit(1)
 	}
 
@@ -148,21 +181,11 @@ func parseFile(filename string) (*parser.Program, string, preprocessor.Result) {
 	p := parser.NewParser()
 	program, err := p.ParseString(filename, result.Source)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Kosa la sintaksia: %s\n", translateParseError(err.Error()))
+		fmt.Fprintf(os.Stderr, "Syntax error: %s\n", err.Error())
 		os.Exit(1)
 	}
 
 	return program, sourceStr, result
-}
-
-func translateParseError(msg string) string {
-	r := strings.NewReplacer(
-		"unexpected token", "tokeni isiyojulikana",
-		"expected", "ilitarajiwa",
-		"invalid input text", "maandishi batili",
-		"lexer: ", "",
-	)
-	return r.Replace(msg)
 }
 
 func findRuntime() string {
@@ -191,7 +214,7 @@ func findRuntime() string {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Kosa: Haiwezi kupata runtime.c\n")
+	fmt.Fprintf(os.Stderr, "Error: Cannot find runtime.c\n")
 	os.Exit(1)
 	return ""
 }

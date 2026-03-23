@@ -1,0 +1,180 @@
+--{
+SINTAX TEST SUITE
+This program tests all language features.
+}--
+
+>> "=== 1. VARIABLES AND TYPES ==="
+x = 42
+>> x
+num a = 10
+str name = "Sintax"
+bool alive = true
+list num_list = [1, 2, 3]
+dict data = {"v": "0.1"}
+>> a
+>> name
+>> alive
+>> num_list
+>> data
+
+>> "=== 2. TYPE() - TYPE CHECK ==="
+>> type(a)
+>> type(name)
+>> type(alive)
+>> type(num_list)
+>> type(data)
+>> type(null)
+
+>> "=== 3. TYPE CONVERSION ==="
+>> num("100")
+>> str(42)
+>> bool(1)
+>> bool(0)
+>> bool("")
+>> bool("hello")
+
+>> "=== 4. ARITHMETIC ==="
+>> 10 + 5
+>> 10 - 3
+>> 4 * 7
+>> 20 / 4
+>> 17 % 5
+
+>> "=== 5. COMPARISON ==="
+>> 5 > 3
+>> 5 < 3
+>> 5 == 5
+>> 5 != 3
+>> 5 >= 5
+>> 5 <= 4
+
+>> "=== 6. LOGIC (and, or, not) ==="
+>> true and true
+>> true and false
+>> false or true
+>> false or false
+>> not true
+>> not false
+
+>> "=== 7. STRINGS ==="
+>> "Hello" + " " + "World"
+name2 = "Erick"
+>> "My name is {name2}"
+>> len("Hello")
+
+>> "=== 8. FUNCTIONS ==="
+-- Untyped
+fn (a, b) add:
+    a + b
+
+>> add(5, 3)
+
+-- Implicit return
+fn (n) square:
+    n * n
+
+>> square(7)
+
+-- Typed function
+fn (num x, num y) num multiply:
+    x * y
+
+>> multiply(4, 5)
+
+-- Explicit return
+fn (num n) num factorial:
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+>> factorial(5)
+
+>> "=== 9. IF / ELSE ==="
+x = 10
+if x > 5:
+    >> "Big"
+else:
+    >> "Small"
+
+if x == 10 and alive:
+    >> "x is 10 and alive is true"
+
+>> "=== 10. MATCH / CASE ==="
+day = "Monday"
+match day:
+    case "Monday":
+        >> "First day"
+    case "Friday":
+        >> "Fifth day"
+    _:
+        >> "Other day"
+
+>> "=== 11. WHILE ==="
+i = 0
+while i < 5:
+    >> i
+    i = i + 1
+
+>> "=== 12. FOR..IN ==="
+for n in range(5):
+    >> n
+
+for fruit in ["Mango", "Banana", "Pineapple"]:
+    >> fruit
+
+>> "=== 13. 0 (BREAK) AND 1 (CONTINUE) ==="
+-- Break at 3
+for n in range(10):
+    if n == 3:
+        0
+    >> n
+
+-- Skip even
+for n in range(6):
+    if n % 2 == 0:
+        1
+    >> n
+
+>> "=== 14. LISTS ==="
+fruits = ["Mango", "Banana", "Pineapple"]
+>> fruits
+>> fruits[0]
+>> len(fruits)
+fruits[0] = "Papaya"
+>> fruits
+push(fruits, "Orange")
+>> fruits
+pop(fruits, 0)
+>> fruits
+
+>> "=== 15. DICTS ==="
+person = {"name": "Erick", "age": 25}
+>> person
+>> person["name"]
+person["age"] = 26
+person["country"] = "Tanzania"
+>> person
+>> keys(person)
+>> values(person)
+>> has(person, "name")
+>> has(person, "email")
+>> len(person)
+
+for k in person:
+    print(k, "=>", person[k])
+
+>> "=== 16. RANGE ==="
+>> range(5)
+>> range(2, 7)
+
+>> "=== 17. PRINT (MULTI-ARG) ==="
+print("Name:", "Erick", "Age:", 25)
+
+>> "=== 18. TYPE ENFORCEMENT ==="
+num safe = 100
+safe = 200
+>> safe
+-- safe = "oops" would error
+
+>> "=== ALL TESTS PASSED! ==="

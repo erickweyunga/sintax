@@ -4,10 +4,17 @@ import (
 	"strings"
 )
 
+// Import represents a use directive.
+type Import struct {
+	Module   string // e.g. "math"
+	Function string // e.g. "sqrt" or "*" or ""
+}
+
 // Result holds the preprocessed source and a line mapping back to the original.
 type Result struct {
 	Source  string
 	LineMap []int // preprocessed line number (1-based index) → original line number
+	Imports []Import
 }
 
 // Process converts indentation-based Sintax source into brace-delimited form.
@@ -20,6 +27,7 @@ func Process(source string) Result {
 	lastOrigLine := 0
 
 	inBlockComment := false
+	var imports []Import
 
 	for origLine, line := range lines {
 		origLineNum := origLine + 1 // 1-based
@@ -39,7 +47,26 @@ func Process(source string) Result {
 
 		line = stripComment(line)
 
-		if strings.TrimSpace(line) == "" {
+		// Rewrite namespace calls: math/sqrt( → math__sqrt(
+		for _, imp := range imports {
+			if imp.Function == "" {
+				// Namespaced import — rewrite module/func( to module__func(
+				line = rewriteNamespaceCalls(line, imp.Module)
+			}
+		}
+
+		trimmed = strings.TrimSpace(line)
+
+		if trimmed == "" {
+			continue
+		}
+
+		// Handle use imports
+		if strings.HasPrefix(trimmed, "use ") {
+			imp := parseUse(trimmed)
+			if imp != nil {
+				imports = append(imports, *imp)
+			}
 			continue
 		}
 
@@ -79,7 +106,45 @@ func Process(source string) Result {
 	return Result{
 		Source:  strings.Join(resultLines, "\n"),
 		LineMap: lineMap,
+		Imports: imports,
 	}
+}
+
+// parseUse parses a use directive.
+// use "math"       → Module: "math", Function: ""
+// use "math/*"     → Module: "math", Function: "*"
+// use "math/sqrt"  → Module: "math", Function: "sqrt"
+// rewriteNamespaceCalls replaces module/func( with module__func( in a line.
+func rewriteNamespaceCalls(line, module string) string {
+	prefix := module + "/"
+	for {
+		idx := strings.Index(line, prefix)
+		if idx == -1 {
+			break
+		}
+		// Replace the / with __
+		line = line[:idx] + module + "__" + line[idx+len(prefix):]
+	}
+	return line
+}
+
+func parseUse(line string) *Import {
+	// Extract the quoted string
+	start := strings.Index(line, "\"")
+	end := strings.LastIndex(line, "\"")
+	if start == -1 || end <= start {
+		return nil
+	}
+	path := line[start+1 : end]
+
+	// Split by /
+	if idx := strings.Index(path, "/"); idx != -1 {
+		return &Import{
+			Module:   path[:idx],
+			Function: path[idx+1:],
+		}
+	}
+	return &Import{Module: path}
 }
 
 func stripComment(line string) string {

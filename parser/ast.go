@@ -24,20 +24,20 @@ type Statement struct {
 	ExprStmt    *ExprStmt    `| @@ )`
 }
 
-// FuncDef defines a function: unda (params) [returnType] name: body
+// FuncDef defines a function: fn (params) [returnType] name: body
 // Supports both typed and untyped params:
-//   unda (nambari a, neno b) nambari jumla:
-//   unda (a, b) jumla:
+//   fn (num a, str b) num add:
+//   fn (a, b) add:
 type FuncDef struct {
-	Params     []*Param `"unda" "(" ( @@ ( "," @@ )* )? ")"`
-	ReturnType *string  `@( "nambari" | "namba" | "tungo" | "buliani" | "bul" | "safu" | "kamusi" )?`
+	Params     []*Param `"fn" "(" ( @@ ( "," @@ )* )? ")"`
+	ReturnType *string  `@( "num" | "str" | "bool" | "list" | "dict" )?`
 	Name       string   `@Ident`
 	Body       *Block   `@@`
 }
 
 // Param is a function parameter, optionally typed.
 type Param struct {
-	Type *string `( @( "nambari" | "namba" | "tungo" | "buliani" | "bul" | "safu" | "kamusi" )`
+	Type *string `( @( "num" | "str" | "bool" | "list" | "dict" )`
 	Name string  `  @Ident | @Ident )`
 }
 
@@ -46,11 +46,11 @@ type Block struct {
 	Statements []*Statement `"{" @@* "}"`
 }
 
-// IfStmt: kama condition: body sivyo: else
+// IfStmt: if condition: body else: else
 type IfStmt struct {
-	Condition *Expr  `"kama" @@`
+	Condition *Expr  `"if" @@`
 	Body      *Block `@@`
-	Else      *Block `( "sivyo" @@ )?`
+	Else      *Block `( "else" @@ )?`
 }
 
 // PrintStmt: >> expr;
@@ -58,40 +58,40 @@ type PrintStmt struct {
 	Value *Expr `">>" @@ ";"`
 }
 
-// WhileStmt: wkt condition: body
+// WhileStmt: while condition: body
 type WhileStmt struct {
-	Condition *Expr  `"wkt" @@`
+	Condition *Expr  `"while" @@`
 	Body      *Block `@@`
 }
 
-// ForStmt: kwa var katika iterable: body
+// ForStmt: for var in iterable: body
 type ForStmt struct {
-	Var  string `"kwa" @Ident`
-	Iter *Expr  `"ktk" @@`
+	Var  string `"for" @Ident`
+	Iter *Expr  `"in" @@`
 	Body *Block `@@`
 }
 
-// SwitchStmt: chagua expr { ikiwa val: body ... _: body }
+// SwitchStmt: match expr { case val: body ... _: body }
 type SwitchStmt struct {
-	Value   *Expr         `"chagua" @@`
+	Value   *Expr         `"match" @@`
 	Cases   []*CaseClause `"{" @@*`
 	Default *Block        `( "_" @@ )? "}"`
 }
 
-// CaseClause: ikiwa value: body
+// CaseClause: case value: body
 type CaseClause struct {
-	Value *Expr  `"ikiwa" @@`
+	Value *Expr  `"case" @@`
 	Body  *Block `@@`
 }
 
-// ReturnStmt: rudisha expr;
+// ReturnStmt: return expr;
 type ReturnStmt struct {
-	Value *Expr `"rudisha" @@ ";"`
+	Value *Expr `"return" @@ ";"`
 }
 
-// TypedAssign: type name = value; (e.g. nambari x = 5;)
+// TypedAssign: type name = value; (e.g. num x = 5;)
 type TypedAssign struct {
-	Type  string `@( "nambari" | "namba" | "tungo" | "buliani" | "bul" | "safu" | "kamusi" )`
+	Type  string `@( "num" | "str" | "bool" | "list" | "dict" )`
 	Name  string `@Ident "="`
 	Value *Expr  `@@ ";"`
 }
@@ -122,7 +122,7 @@ type ExprStmt struct {
 }
 
 // Expression hierarchy for operator precedence.
-// Precedence (low → high): au → na → comparison → addition → multiplication → unary(si) → primary
+// Precedence (low → high): or → and → comparison → addition → multiplication → unary(not) → primary
 
 type Expr struct {
 	Left *LogicalAnd `@@`
@@ -130,7 +130,7 @@ type Expr struct {
 }
 
 type OrOp struct {
-	Right *LogicalAnd `"au" @@`
+	Right *LogicalAnd `"or" @@`
 }
 
 type LogicalAnd struct {
@@ -139,12 +139,12 @@ type LogicalAnd struct {
 }
 
 type AndOp struct {
-	Right *Comparison `"na" @@`
+	Right *Comparison `"and" @@`
 }
 
 type Comparison struct {
 	Left  *Addition `@@`
-	Op    string    `( @( ">" | "<" | ">=" | "<=" | "==" | "!=" | "ktk" )`
+	Op    string    `( @( ">" | "<" | ">=" | "<=" | "==" | "!=" | "in" )`
 	Right *Addition `  @@ )?`
 }
 
@@ -169,7 +169,7 @@ type MulOp struct {
 }
 
 type Unary struct {
-	Not     *Unary   `( "si" @@`
+	Not     *Unary   `( "not" @@`
 	Neg     *Unary   `| "-" @@`
 	Pos     *Unary   `| "+" @@`
 	Primary *Primary `| @@ )`

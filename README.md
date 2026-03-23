@@ -1,6 +1,6 @@
 # Sintax
 
-A gradually-typed, compiled programming language with Swahili syntax.
+A gradually-typed, compiled programming language with clean, minimal syntax.
 
 Sintax compiles to **native binaries** via LLVM, or runs interpreted for quick development.
 
@@ -24,80 +24,89 @@ sintax
 ## Example
 
 ```
--- hello.sx
-unda (tungo jina) tungo salamu:
-    rudisha "Habari, {jina}!"
+fn (str name) str greet:
+    return "Hello, {name}!"
 
->> salamu("Dunia")
+>> greet("World")
 
-matunda = ["Embe", "Ndizi", "Nanasi"]
-kwa tunda ktk matunda:
-    >> tunda
+fruits = ["Mango", "Banana", "Pineapple"]
+for fruit in fruits:
+    >> fruit
 
-kama urefu(matunda) > 2:
-    >> "Matunda mengi!"
-sivyo:
-    >> "Matunda machache"
+if len(fruits) > 2:
+    >> "Many fruits!"
+else:
+    >> "Few fruits"
 ```
 
 ## Features
 
 ### Types
+
 ```
-nambari x = 42          -- number (typed)
-tungo jina = "Erick"    -- string (typed)
-buliani hai = kweli     -- boolean (typed)
-safu items = [1, 2, 3]  -- list (typed)
-kamusi data = {"a": 1}  -- dict (typed)
+num x = 42              -- number (typed)
+str name = "Eric"       -- string (typed)
+bool active = true      -- boolean (typed)
+list items = [1, 2, 3]  -- list (typed)
+dict data = {"a": 1}    -- dict (typed)
 y = "dynamic"           -- untyped (dynamic)
 ```
 
 ### Functions
-```
-unda (nambari a, nambari b) nambari jumla:
-    a + b                -- implicit return
 
-unda (n) factorial:
-    kama n <= 1:
-        rudisha 1
-    sivyo:
-        rudisha n * factorial(n - 1)
+```
+-- Typed params and return
+fn (num a, num b) num add:
+    a + b
+
+-- Untyped (dynamic)
+fn (a, b) multiply:
+    a * b
+
+-- Recursive
+fn (num n) num factorial:
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
 ```
 
 ### Control Flow
+
 ```
 -- if/else
-kama x > 10:
-    >> "kubwa"
-sivyo:
-    >> "ndogo"
+if x > 10:
+    >> "big"
+else:
+    >> "small"
 
--- switch/case
-chagua siku:
-    ikiwa "Jumatatu":
-        >> "Siku ya kwanza"
+-- match/case
+match day:
+    case "Monday":
+        >> "First day"
     _:
-        >> "Siku nyingine"
+        >> "Other day"
 
--- while loop
-wkt i < 10:
+-- while
+while i < 10:
     >> i
     i += 1
 
--- for loop
-kwa n ktk masafa(10):
+-- for..in
+for n in range(10):
     >> n
 
--- break/continue
-kwa n ktk masafa(100):
-    kama n == 50:
-        0               -- break
-    kama n % 2 == 0:
-        1               -- continue
+-- break (0) / continue (1)
+for n in range(100):
+    if n == 50:
+        0
+    if n % 2 == 0:
+        1
     >> n
 ```
 
 ### Operators
+
 ```
 -- Arithmetic
 + - * / % **
@@ -106,65 +115,54 @@ kwa n ktk masafa(100):
 == != > < >= <=
 
 -- Logical
-na  au  si              -- and, or, not
+and  or  not
 
 -- Membership
-"a" ktk ["a", "b"]     -- kweli
+"a" in ["a", "b"]      -- true
+
+-- Unary
+-5  +5
 
 -- Compound assignment
 x += 1  x -= 1  x *= 2  x /= 2
 ```
 
 ### Collections
+
 ```
--- Lists (safu)
+-- Lists
 items = [1, 2, 3]
 >> items[0]
-ongeza(items, 4)
-ondoa(items, 0)
+push(items, 4)
+pop(items, 0)
+>> len(items)
 
--- Dicts (kamusi)
-mtu = {"jina": "Erick", "umri": 25}
->> mtu["jina"]
-mtu["nchi"] = "Tanzania"
-kwa k ktk mtu:
-    >> k
+-- Dicts
+person = {"name": "Eric", "age": 25}
+>> person["name"]
+person["country"] = "Tanzania"
+>> keys(person)
+>> has(person, "name")
 ```
 
-### Built-in Functions
-| Function | Purpose |
-|----------|---------|
-| `andika(x, y)` | Print with multiple args |
-| `>> x` | Print shorthand |
-| `soma("prompt")` | Read user input |
-| `aina(x)` | Get type name |
-| `urefu(x)` | Length of list/string/dict |
-| `ongeza(list, item)` | Append to list |
-| `ondoa(list, idx)` | Remove from list |
-| `masafa(n)` / `masafa(a, b)` | Range of numbers |
-| `funguo(dict)` | Dict keys |
-| `thamani(dict)` | Dict values |
-| `ina(dict, key)` | Check if key exists |
-| `nambari(x)` | Convert to number |
-| `tungo(x)` | Convert to string |
-| `buliani(x)` | Convert to boolean |
+### Strings
 
-### String Features
 ```
 -- Interpolation
-jina = "Erick"
->> "Habari {jina}!"
+name = "Eric"
+>> "Hello {name}!"
 
 -- Escape sequences
->> "mstari\nmpya"
+>> "line1\nline2"
 >> "tab\there"
->> "nukuu \"hizi\""
+>> "quote \"here\""
 
 -- Concatenation
->> "Habari" + " " + "Dunia"
+>> "Hello" + " " + "World"
 ```
 
 ### Comments
+
 ```
 -- single line comment
 
@@ -174,11 +172,78 @@ comment
 }--
 ```
 
+### Imports
+
+```
+-- Namespaced
+use "math"
+>> math/sqrt(16)
+
+-- Wildcard (all functions directly available)
+use "math/*"
+>> sqrt(16)
+
+-- Specific function
+use "math/sqrt"
+>> sqrt(16)
+```
+
+## Built-in Functions
+
+| Function | Purpose |
+|----------|---------|
+| `print(x, y)` | Print with multiple args |
+| `>> x` | Print shorthand |
+| `input("prompt")` | Read user input |
+| `type(x)` | Get type name |
+| `len(x)` | Length of list/str/dict |
+| `push(list, item)` | Append to list |
+| `pop(list, idx)` | Remove from list |
+| `range(n)` / `range(a, b)` | Range of numbers |
+| `keys(dict)` | Dict keys |
+| `values(dict)` | Dict values |
+| `has(dict, key)` | Check key exists |
+| `num(x)` | Convert to number |
+| `str(x)` | Convert to string |
+| `bool(x)` | Convert to boolean |
+
+## Standard Library
+
+```bash
+sintax lib              # list all libraries
+sintax lib math         # show math functions
+```
+
+### math
+
+sqrt, abs, floor, ceil, round, min, max, pi, e, sin, cos, tan, asin, acos, atan, log, log2, log10, exp, pow, cbrt, radiani, digrii, nasibu, nasibu_kati, ishara, clamp, jumla, wastani, ubaguzi, kupotoka, kati, factorial, mchanganyiko, mpangilio, asilimia
+
+### string
+
+gawa (split), unganisha (join), badilisha (replace), punguza (trim), kubwa (upper), ndogo (lower), ina_neno (contains), anza_na (starts_with), isha_na (ends_with)
+
+### os
+
+soma (read), andika (write), ipo (exists), ongeza (append), futa (delete), orodha (list_dir), tengeneza_saraka (mkdir), mazingira (getenv), weka_mazingira (setenv), tekeleza (exec), toka (exit), mfumo_jina (os_name), saa (time), cwd (cwd)
+
 ## Architecture
 
 ```
 sintax file.sx          Interpreter (tree-walking)
 sintax build file.sx    Compiler (AST → LLVM IR → clang → native binary)
+```
+
+### Pipeline
+
+```
+Source (.sx)
+    ↓
+Preprocessor (indentation → braces, use directives)
+    ↓
+Parser (participle → AST)
+    ↓
+    ├── sintax file.sx     → Tree-walking evaluator
+    └── sintax build       → LLVM IR → clang -O2 → native binary
 ```
 
 ## Building from Source
@@ -190,9 +255,10 @@ make build
 ```
 
 ### Requirements
+
 - Go 1.21+
 - clang (for `sintax build`)
-- bdw-gc (optional, for garbage collection in compiled binaries)
+- bdw-gc (optional, garbage collection for compiled binaries)
 
 ```bash
 # macOS
@@ -202,6 +268,17 @@ brew install bdw-gc
 sudo apt install clang libgc-dev
 ```
 
+## Makefile
+
+```bash
+make build      # Build the binary
+make run FILE=f # Run a .sx file
+make compile FILE=f # Compile to native
+make test       # Run Go tests
+make clean      # Remove binary
+make help       # Show commands
+```
+
 ## License
 
-MIT
+MIT — Eric Kweyunga

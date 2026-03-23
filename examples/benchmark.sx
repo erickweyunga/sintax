@@ -3,40 +3,40 @@
 -- 1. Arithmetic loop (1 million iterations)
 i = 0
 x = 0
-wkt i < 1000000:
+while i < 1000000:
     x = x + i
     i += 1
 >> x
 
 -- 2. Fibonacci (recursive)
-unda (nambari n) nambari fib:
-    kama n <= 1:
-        rudisha n
-    sivyo:
-        rudisha fib(n - 1) + fib(n - 2)
+fn (num n) num fib:
+    if n <= 1:
+        return n
+    else:
+        return fib(n - 1) + fib(n - 2)
 
 >> fib(30)
 
 -- 3. String building
 s = ""
 i = 0
-wkt i < 1000:
+while i < 1000:
     s += "a"
     i += 1
->> urefu(s)
+>> len(s)
 
 -- 4. List operations
-orodha = []
+items = []
 i = 0
-wkt i < 10000:
-    ongeza(orodha, i)
+while i < 10000:
+    push(items, i)
     i += 1
->> urefu(orodha)
+>> len(items)
 
 -- 5. Dict operations
-kamusi = {}
+d = {}
 i = 0
-wkt i < 1000:
-    kamusi[tungo(i)] = i
+while i < 1000:
+    d[str(i)] = i
     i += 1
->> urefu(kamusi)
+>> len(d)

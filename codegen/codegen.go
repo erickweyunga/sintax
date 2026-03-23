@@ -607,7 +607,7 @@ func (cg *CodeGen) compileComparison(cmp *parser.Comparison) llvmValue.Value {
 			return cg.callRT("sx_gte", left, right)
 		case "<=":
 			return cg.callRT("sx_lte", left, right)
-		case "ktk":
+		case "in":
 			return cg.callRT("sx_in", left, right)
 		}
 	}
@@ -705,11 +705,11 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	case p.Ident != nil:
 		name := *p.Ident
 		switch name {
-		case "kweli":
+		case "true":
 			return cg.callRT("sx_bool", constant.NewInt(i32, 1))
-		case "sikweli":
+		case "false":
 			return cg.callRT("sx_bool", constant.NewInt(i32, 0))
-		case "tupu":
+		case "null":
 			return cg.callRT("sx_null")
 		default:
 			return cg.getVar(name)
@@ -725,7 +725,7 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 	// Built-in functions
 	switch fc.Name {
-	case "andika":
+	case "print":
 		if len(fc.Args) == 1 {
 			val := cg.compileExpr(fc.Args[0])
 			cg.callRTVoid("sx_print", val)
@@ -746,22 +746,22 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		}
 		cg.callRTVoid("sx_print", result)
 		return cg.callRT("sx_null")
-	case "aina":
+	case "type":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_type", val)
-	case "urefu":
+	case "len":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_len", val)
-	case "ongeza":
+	case "push":
 		list := cg.compileExpr(fc.Args[0])
 		item := cg.compileExpr(fc.Args[1])
 		cg.callRTVoid("sx_list_append", list, item)
 		return list
-	case "ondoa":
+	case "pop":
 		list := cg.compileExpr(fc.Args[0])
 		idx := cg.compileExpr(fc.Args[1])
 		return cg.callRT("sx_list_remove", list, idx)
-	case "masafa":
+	case "range":
 		if len(fc.Args) == 1 {
 			end := cg.compileExpr(fc.Args[0])
 			start := cg.callRT("sx_number", constant.NewFloat(types.Double, 0))
@@ -770,26 +770,26 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		start := cg.compileExpr(fc.Args[0])
 		end := cg.compileExpr(fc.Args[1])
 		return cg.callRT("sx_range", start, end)
-	case "funguo":
+	case "keys":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_dict_keys", val)
-	case "thamani":
+	case "values":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_dict_values", val)
-	case "ina":
+	case "has":
 		dict := cg.compileExpr(fc.Args[0])
 		key := cg.compileExpr(fc.Args[1])
 		return cg.callRT("sx_dict_has", dict, key)
-	case "nambari":
+	case "num":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_to_number", val)
-	case "tungo":
+	case "str":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_to_string", val)
-	case "buliani":
+	case "bool":
 		val := cg.compileExpr(fc.Args[0])
 		return cg.callRT("sx_to_bool", val)
-	case "soma":
+	case "input":
 		if len(fc.Args) > 0 {
 			prompt := cg.compileExpr(fc.Args[0])
 			return cg.callRT("sx_input", prompt)
@@ -862,15 +862,15 @@ func (cg *CodeGen) newBlock(prefix string) *ir.Block {
 
 func typeNameToTag(name string) int {
 	switch name {
-	case "nambari", "namba":
+	case "num":
 		return 1 // SX_NUMBER
-	case "tungo":
+	case "str":
 		return 2 // SX_STRING
-	case "buliani", "bul":
+	case "bool":
 		return 3 // SX_BOOL
-	case "safu":
+	case "list":
 		return 4 // SX_LIST
-	case "kamusi":
+	case "dict":
 		return 5 // SX_DICT
 	default:
 		return 0

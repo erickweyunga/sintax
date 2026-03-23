@@ -1,0 +1,42 @@
+-- This is a Sintax program!
+
+-- Function
+fn (a, b) add:
+    a + b
+
+x = add(5, 3)
+>> x
+
+-- Conditionals
+if x > 4:
+    >> "Big"
+else:
+    >> "Small"
+
+-- Lists
+fruits = ["Mango", "Banana", "Pineapple"]
+print(fruits)
+print("Fruits:", len(fruits))
+
+-- Indexing
+>> fruits[0]
+fruits[0] = "Papaya"
+print(fruits)
+
+-- Append
+push(fruits, "Orange")
+print(fruits)
+
+-- For loop
+for fruit in fruits:
+    >> fruit
+
+-- While loop
+i = 0
+while i < 5:
+    print("Count:", i)
+    i = i + 1
+
+-- Range
+for n in range(3):
+    print("range:", n)

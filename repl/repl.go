@@ -18,7 +18,7 @@ const blockPrompt = "... "
 // Start launches the interactive Sintax REPL.
 func Start() {
 	fmt.Println("Sintax REPL v0.1.0")
-	fmt.Println("'toka' kutoka.")
+	fmt.Println("Type 'exit' to quit.")
 	fmt.Println()
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -32,8 +32,8 @@ func Start() {
 		}
 
 		line := scanner.Text()
-		if strings.TrimSpace(line) == "toka" {
-			fmt.Println("Kwaheri!")
+		if strings.TrimSpace(line) == "exit" {
+			fmt.Println("Bye!")
 			break
 		}
 
@@ -51,13 +51,13 @@ func Start() {
 
 		program, err := p.ParseString("repl", processed.Source)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Kosa la sintaksia: %s\n", translateParseError(err.Error()))
+			fmt.Fprintf(os.Stderr, "Syntax error: %s\n", err.Error())
 			continue
 		}
 
 		val, err := evaluator.EvalWithEnv(program, env)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Kosa: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			continue
 		}
 
@@ -67,16 +67,6 @@ func Start() {
 			}
 		}
 	}
-}
-
-func translateParseError(msg string) string {
-	r := strings.NewReplacer(
-		"unexpected token", "tokeni isiyojulikana",
-		"expected", "ilitarajiwa",
-		"invalid input text", "maandishi batili",
-		"lexer: ", "",
-	)
-	return r.Replace(msg)
 }
 
 // readBlock collects indented lines for a block until an empty line is entered.

@@ -1,0 +1,29 @@
+-- Calculator - Simple calculator in Sintax
+
+>> "=== CALCULATOR ==="
+>> ""
+
+a = input("First number: ")
+>> "Choose: +, -, *, /, %"
+op = input("Operation: ")
+b = input("Second number: ")
+
+match op:
+    case "+":
+        print("{a} + {b} =", a + b)
+    case "-":
+        print("{a} - {b} =", a - b)
+    case "*":
+        print("{a} * {b} =", a * b)
+    case "/":
+        if b == 0:
+            >> "Error: Division by zero!"
+        else:
+            print("{a} / {b} =", a / b)
+    case "%":
+        if b == 0:
+            >> "Error: Division by zero!"
+        else:
+            print("{a} % {b} =", a % b)
+    _:
+        >> "Error: Unknown operation!"

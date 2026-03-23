@@ -34,15 +34,15 @@ type BoolObj struct{ Value bool }
 
 func (o *BoolObj) Inspect() string {
 	if o.Value {
-		return "kweli"
+		return "true"
 	}
-	return "sikweli"
+	return "false"
 }
 
 // NullObj represents a null/void value.
 type NullObj struct{}
 
-func (o *NullObj) Inspect() string { return "tupu" }
+func (o *NullObj) Inspect() string { return "null" }
 
 // ReturnObj wraps a return value to propagate it up the call stack.
 type ReturnObj struct{ Value Object }
@@ -108,25 +108,25 @@ type FuncObj struct {
 	Env        Env
 }
 
-func (o *FuncObj) Inspect() string { return fmt.Sprintf("<unda %s>", o.Name) }
+func (o *FuncObj) Inspect() string { return fmt.Sprintf("<fn %s>", o.Name) }
 
-// TypeName returns the Swahili type name for an object.
+// TypeName returns the type name for an object.
 func TypeName(obj Object) string {
 	switch obj.(type) {
 	case *NumberObj:
-		return "nambari"
+		return "num"
 	case *StringObj:
-		return "tungo"
+		return "str"
 	case *BoolObj:
-		return "buliani"
+		return "bool"
 	case *ListObj:
-		return "safu"
+		return "list"
 	case *DictObj:
-		return "kamusi"
+		return "dict"
 	case *FuncObj:
-		return "unda"
+		return "fn"
 	default:
-		return "tupu"
+		return "null"
 	}
 }
 
@@ -172,16 +172,10 @@ func ObjectsEqual(a, b Object) bool {
 	return false
 }
 
-// NormalizeType maps short aliases to canonical type names.
+// NormalizeType maps type names to canonical form.
+// Since we now use short English names, this is mostly a pass-through.
 func NormalizeType(t string) string {
-	switch t {
-	case "namba":
-		return "nambari"
-	case "bul":
-		return "buliani"
-	default:
-		return t
-	}
+	return t
 }
 
 // Null is a singleton null value to avoid repeated allocations.

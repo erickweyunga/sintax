@@ -20,7 +20,7 @@
 
 static SxValue* sx_alloc(SxType type) {
     SxValue *v = (SxValue*)SX_MALLOC(sizeof(SxValue));
-    if (!v) { fprintf(stderr, "Kosa: kumbukumbu imekwisha\n"); exit(1); }
+    if (!v) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     v->type = type;
     return v;
 }
@@ -28,7 +28,7 @@ static SxValue* sx_alloc(SxType type) {
 static char* sx_strdup(const char *s) {
     size_t len = strlen(s);
     char *dup = (char*)SX_MALLOC(len + 1);
-    if (!dup) { fprintf(stderr, "Kosa: kumbukumbu imekwisha\n"); exit(1); }
+    if (!dup) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     memcpy(dup, s, len + 1);
     return dup;
 }
@@ -151,7 +151,7 @@ static void sx_dict_add_key(SxDict *d, const char *key) {
 // --- Error ---
 
 void sx_error(const char *msg) {
-    fprintf(stderr, "Kosa: %s\n", msg);
+    fprintf(stderr, "Error: %s\n", msg);
     exit(1);
 }
 
@@ -184,46 +184,46 @@ SxValue* sx_add(SxValue *a, SxValue *b) {
         v->string = s;
         return v;
     }
-    sx_error("Operesheni '+' haiwezekani kwa aina hizi");
+    sx_error("Operation '+' not supported for these types");
     return sx_null();
 }
 
 SxValue* sx_sub(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(a->number - b->number);
-    sx_error("Operesheni '-' inahitaji nambari");
+    sx_error("Operation '-' requires num values");
     return sx_null();
 }
 
 SxValue* sx_mul(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(a->number * b->number);
-    sx_error("Operesheni '*' inahitaji nambari");
+    sx_error("Operation '*' requires num values");
     return sx_null();
 }
 
 SxValue* sx_div(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER) {
-        if (b->number == 0) sx_error("Haiwezekani kugawanya na sifuri");
+        if (b->number == 0) sx_error("Division by zero");
         return sx_number(a->number / b->number);
     }
-    sx_error("Operesheni '/' inahitaji nambari");
+    sx_error("Operation '/' requires num values");
     return sx_null();
 }
 
 SxValue* sx_mod(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER) {
-        if (b->number == 0) sx_error("Haiwezekani kugawanya na sifuri");
+        if (b->number == 0) sx_error("Division by zero");
         return sx_number((double)((long long)a->number % (long long)b->number));
     }
-    sx_error("Operesheni '%' inahitaji nambari");
+    sx_error("Operation '%' requires num values");
     return sx_null();
 }
 
 SxValue* sx_pow(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(pow(a->number, b->number));
-    sx_error("Operesheni '**' inahitaji nambari");
+    sx_error("Operation '**' requires num values");
     return sx_null();
 }
 
@@ -248,28 +248,28 @@ SxValue* sx_neq(SxValue *a, SxValue *b) {
 SxValue* sx_gt(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number > b->number);
-    sx_error("Ulinganisho '>' unahitaji nambari");
+    sx_error("Comparison '>' requires num values");
     return sx_null();
 }
 
 SxValue* sx_lt(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number < b->number);
-    sx_error("Ulinganisho '<' unahitaji nambari");
+    sx_error("Comparison '<' requires num values");
     return sx_null();
 }
 
 SxValue* sx_gte(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number >= b->number);
-    sx_error("Ulinganisho '>=' unahitaji nambari");
+    sx_error("Comparison '>=' requires num values");
     return sx_null();
 }
 
 SxValue* sx_lte(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number <= b->number);
-    sx_error("Ulinganisho '<=' unahitaji nambari");
+    sx_error("Comparison '<=' requires num values");
     return sx_null();
 }
 
@@ -282,9 +282,9 @@ SxValue* sx_not(SxValue *a) {
 // --- Print ---
 
 static void sx_print_value(SxValue *v, int quote_strings) {
-    if (!v) { printf("tupu"); return; }
+    if (!v) { printf("null"); return; }
     switch (v->type) {
-        case SX_NULL: printf("tupu"); break;
+        case SX_NULL: printf("null"); break;
         case SX_NUMBER:
             if (v->number == (long long)v->number)
                 printf("%lld", (long long)v->number);
@@ -295,7 +295,7 @@ static void sx_print_value(SxValue *v, int quote_strings) {
             if (quote_strings) printf("\"%s\"", v->string);
             else printf("%s", v->string);
             break;
-        case SX_BOOL: printf("%s", v->boolean ? "kweli" : "sikweli"); break;
+        case SX_BOOL: printf("%s", v->boolean ? "true" : "false"); break;
         case SX_LIST:
             printf("[");
             for (int i = 0; i < v->list.len; i++) {
@@ -337,7 +337,7 @@ void sx_print_multi(int count, ...) {
 // --- List operations ---
 
 void sx_list_append(SxValue *list, SxValue *item) {
-    if (list->type != SX_LIST) sx_error("ongeza() hoja ya kwanza lazima iwe safu");
+    if (list->type != SX_LIST) sx_error("push() first argument must be a list");
     if (list->list.len >= list->list.cap) {
         list->list.cap = list->list.cap == 0 ? 4 : list->list.cap * 2;
         list->list.items = (SxValue**)SX_REALLOC(list->list.items, sizeof(SxValue*) * list->list.cap);
@@ -346,26 +346,26 @@ void sx_list_append(SxValue *list, SxValue *item) {
 }
 
 SxValue* sx_list_get(SxValue *list, SxValue *index) {
-    if (list->type != SX_LIST) sx_error("si safu");
-    if (index->type != SX_NUMBER) sx_error("Fahirisi lazima iwe nambari");
+    if (list->type != SX_LIST) sx_error("not a list");
+    if (index->type != SX_NUMBER) sx_error("Index must be a num");
     int i = (int)index->number;
-    if (i < 0 || i >= list->list.len) sx_error("Fahirisi nje ya masafa");
+    if (i < 0 || i >= list->list.len) sx_error("Index out of range");
     return list->list.items[i];
 }
 
 void sx_list_set(SxValue *list, SxValue *index, SxValue *val) {
-    if (list->type != SX_LIST) sx_error("si safu");
-    if (index->type != SX_NUMBER) sx_error("Fahirisi lazima iwe nambari");
+    if (list->type != SX_LIST) sx_error("not a list");
+    if (index->type != SX_NUMBER) sx_error("Index must be a num");
     int i = (int)index->number;
-    if (i < 0 || i >= list->list.len) sx_error("Fahirisi nje ya masafa");
+    if (i < 0 || i >= list->list.len) sx_error("Index out of range");
     list->list.items[i] = val;
 }
 
 SxValue* sx_list_remove(SxValue *list, SxValue *index) {
-    if (list->type != SX_LIST) sx_error("ondoa() hoja ya kwanza lazima iwe safu");
-    if (index->type != SX_NUMBER) sx_error("ondoa() hoja ya pili lazima iwe nambari");
+    if (list->type != SX_LIST) sx_error("pop() first argument must be a list");
+    if (index->type != SX_NUMBER) sx_error("pop() second argument must be a num");
     int i = (int)index->number;
-    if (i < 0 || i >= list->list.len) sx_error("Fahirisi nje ya masafa");
+    if (i < 0 || i >= list->list.len) sx_error("Index out of range");
     SxValue *removed = list->list.items[i];
     for (int j = i; j < list->list.len - 1; j++)
         list->list.items[j] = list->list.items[j + 1];
@@ -376,15 +376,15 @@ SxValue* sx_list_remove(SxValue *list, SxValue *index) {
 // --- Dict operations (hash table) ---
 
 SxValue* sx_dict_get(SxValue *dict, SxValue *key) {
-    if (dict->type != SX_DICT) sx_error("si kamusi");
-    if (key->type != SX_STRING) sx_error("Ufunguo wa kamusi lazima uwe tungo");
+    if (dict->type != SX_DICT) sx_error("not a dict");
+    if (key->type != SX_STRING) sx_error("Dict key must be a str");
     SxDictBucket *b = sx_dict_find(&dict->dict, key->string);
     return b ? b->value : sx_null();
 }
 
 void sx_dict_set(SxValue *dict, SxValue *key, SxValue *val) {
-    if (dict->type != SX_DICT) sx_error("si kamusi");
-    if (key->type != SX_STRING) sx_error("Ufunguo wa kamusi lazima uwe tungo");
+    if (dict->type != SX_DICT) sx_error("not a dict");
+    if (key->type != SX_STRING) sx_error("Dict key must be a str");
 
     // Check if key exists
     SxDictBucket *existing = sx_dict_find(&dict->dict, key->string);
@@ -413,7 +413,7 @@ void sx_dict_set(SxValue *dict, SxValue *key, SxValue *val) {
 }
 
 SxValue* sx_dict_keys(SxValue *dict) {
-    if (dict->type != SX_DICT) sx_error("funguo() inahitaji kamusi");
+    if (dict->type != SX_DICT) sx_error("keys() requires a dict");
     SxValue *list = sx_list_new();
     for (int i = 0; i < dict->dict.len; i++)
         sx_list_append(list, sx_string(dict->dict.keys[i]));
@@ -421,7 +421,7 @@ SxValue* sx_dict_keys(SxValue *dict) {
 }
 
 SxValue* sx_dict_values(SxValue *dict) {
-    if (dict->type != SX_DICT) sx_error("thamani() inahitaji kamusi");
+    if (dict->type != SX_DICT) sx_error("values() requires a dict");
     SxValue *list = sx_list_new();
     for (int i = 0; i < dict->dict.len; i++) {
         SxDictBucket *b = sx_dict_find(&dict->dict, dict->dict.keys[i]);
@@ -431,8 +431,8 @@ SxValue* sx_dict_values(SxValue *dict) {
 }
 
 SxValue* sx_dict_has(SxValue *dict, SxValue *key) {
-    if (dict->type != SX_DICT) sx_error("ina() hoja ya kwanza lazima iwe kamusi");
-    if (key->type != SX_STRING) sx_error("ina() hoja ya pili lazima iwe tungo");
+    if (dict->type != SX_DICT) sx_error("has() first argument must be a dict");
+    if (key->type != SX_STRING) sx_error("has() second argument must be a str");
     return sx_bool(sx_dict_find(&dict->dict, key->string) != NULL);
 }
 
@@ -443,13 +443,13 @@ SxValue* sx_index(SxValue *collection, SxValue *idx) {
         case SX_LIST: return sx_list_get(collection, idx);
         case SX_DICT: return sx_dict_get(collection, idx);
         case SX_STRING: {
-            if (idx->type != SX_NUMBER) sx_error("Fahirisi lazima iwe nambari");
+            if (idx->type != SX_NUMBER) sx_error("Index must be a num");
             int i = (int)idx->number;
-            if (i < 0 || i >= (int)strlen(collection->string)) sx_error("Fahirisi nje ya masafa");
+            if (i < 0 || i >= (int)strlen(collection->string)) sx_error("Index out of range");
             char buf[2] = {collection->string[i], '\0'};
             return sx_string(buf);
         }
-        default: sx_error("Haiwezi kufikia kwa fahirisi");
+        default: sx_error("Not indexable");
     }
     return sx_null();
 }
@@ -458,7 +458,7 @@ void sx_index_set(SxValue *collection, SxValue *idx, SxValue *val) {
     switch (collection->type) {
         case SX_LIST: sx_list_set(collection, idx, val); break;
         case SX_DICT: sx_dict_set(collection, idx, val); break;
-        default: sx_error("Haiwezi kuweka kwa fahirisi");
+        default: sx_error("Cannot assign by index");
     }
 }
 
@@ -475,10 +475,10 @@ SxValue* sx_in(SxValue *needle, SxValue *haystack) {
         case SX_DICT:
             return sx_dict_has(haystack, needle);
         case SX_STRING:
-            if (needle->type != SX_STRING) sx_error("ktk kwa tungo inahitaji tungo");
+            if (needle->type != SX_STRING) sx_error("'in' for str requires a str");
             return sx_bool(strstr(haystack->string, needle->string) != NULL);
         default:
-            sx_error("ktk haiwezi kutumika kwa aina hii");
+            sx_error("'in' not supported for this type");
     }
     return sx_bool(0);
 }
@@ -490,26 +490,26 @@ SxValue* sx_len(SxValue *v) {
         case SX_STRING: return sx_number(strlen(v->string));
         case SX_LIST: return sx_number(v->list.len);
         case SX_DICT: return sx_number(v->dict.len);
-        default: sx_error("urefu() inahitaji safu, tungo, au kamusi");
+        default: sx_error("len() requires a list, str, or dict");
     }
     return sx_null();
 }
 
 SxValue* sx_type(SxValue *v) {
     switch (v->type) {
-        case SX_NUMBER: return sx_string("nambari");
-        case SX_STRING: return sx_string("tungo");
-        case SX_BOOL: return sx_string("buliani");
-        case SX_LIST: return sx_string("safu");
-        case SX_DICT: return sx_string("kamusi");
-        case SX_NULL: return sx_string("tupu");
-        default: return sx_string("haijulikani");
+        case SX_NUMBER: return sx_string("num");
+        case SX_STRING: return sx_string("str");
+        case SX_BOOL: return sx_string("bool");
+        case SX_LIST: return sx_string("list");
+        case SX_DICT: return sx_string("dict");
+        case SX_NULL: return sx_string("null");
+        default: return sx_string("unknown");
     }
 }
 
 SxValue* sx_range(SxValue *start, SxValue *end) {
     if (start->type != SX_NUMBER || end->type != SX_NUMBER)
-        sx_error("masafa() inahitaji nambari");
+        sx_error("range() requires num arguments");
     SxValue *list = sx_list_new();
     for (double i = start->number; i < end->number; i++)
         sx_list_append(list, sx_number(i));
@@ -522,11 +522,11 @@ SxValue* sx_to_number(SxValue *v) {
         case SX_STRING: {
             char *end;
             double n = strtod(v->string, &end);
-            if (end == v->string) sx_error("Haiwezi kubadilisha tungo kuwa nambari");
+            if (end == v->string) sx_error("Cannot convert str to num");
             return sx_number(n);
         }
         case SX_BOOL: return sx_number(v->boolean ? 1 : 0);
-        default: sx_error("Haiwezi kubadilisha kuwa nambari");
+        default: sx_error("Cannot convert to num");
     }
     return sx_null();
 }
@@ -541,9 +541,9 @@ SxValue* sx_to_string(SxValue *v) {
                 snprintf(buf, sizeof(buf), "%g", v->number);
             return sx_string(buf);
         case SX_STRING: return v;
-        case SX_BOOL: return sx_string(v->boolean ? "kweli" : "sikweli");
-        case SX_NULL: return sx_string("tupu");
-        default: return sx_string("<kitu>");
+        case SX_BOOL: return sx_string(v->boolean ? "true" : "false");
+        case SX_NULL: return sx_string("null");
+        default: return sx_string("<object>");
     }
 }
 
@@ -588,14 +588,14 @@ void sx_check_type(SxValue *v, SxType expected, const char *name) {
         SxValue *got = sx_type(v);
         const char *exp_name;
         switch (expected) {
-            case SX_NUMBER: exp_name = "nambari"; break;
-            case SX_STRING: exp_name = "tungo"; break;
-            case SX_BOOL: exp_name = "buliani"; break;
-            case SX_LIST: exp_name = "safu"; break;
-            case SX_DICT: exp_name = "kamusi"; break;
-            default: exp_name = "haijulikani"; break;
+            case SX_NUMBER: exp_name = "num"; break;
+            case SX_STRING: exp_name = "str"; break;
+            case SX_BOOL: exp_name = "bool"; break;
+            case SX_LIST: exp_name = "list"; break;
+            case SX_DICT: exp_name = "dict"; break;
+            default: exp_name = "unknown"; break;
         }
-        snprintf(msg, sizeof(msg), "Aina si sahihi: '%s' ni %s, inahitaji %s", name, got->string, exp_name);
+        snprintf(msg, sizeof(msg), "Type mismatch: '%s' is %s, expected %s", name, got->string, exp_name);
         sx_error(msg);
     }
 }

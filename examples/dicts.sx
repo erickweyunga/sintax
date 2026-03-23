@@ -1,0 +1,30 @@
+-- Dictionaries
+
+person = {"name": "Erick", "age": 25, "language": "Swahili"}
+>> person
+
+-- Accessing values
+>> person["name"]
+>> person["age"]
+
+-- Modifying values
+person["age"] = 26
+>> person
+
+-- Adding new keys
+person["country"] = "Tanzania"
+>> person
+
+-- Dict functions
+print("Keys:", keys(person))
+print("Values:", values(person))
+print("Length:", len(person))
+print("Has name?", has(person, "name"))
+
+-- Iterating over dict
+for key in person:
+    print("{key} =", person[key])
+
+-- String interpolation
+name = "Sintax"
+>> "Hello from {name}!"
