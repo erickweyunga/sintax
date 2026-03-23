@@ -9,73 +9,101 @@ import (
 	"github.com/erickweyunga/sintax/object"
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
-	"github.com/erickweyunga/sintax/stdlib"
 )
 
-// importedFuncs holds stdlib functions registered via use.
-var importedFuncs = map[string]stdlib.StdFn{}
-
-// importedUserEnvs holds environments from imported .sx files.
+// importedUserEnvs holds environments from imported modules.
 var importedUserEnvs = map[string]*Environment{}
 
-// RegisterImports processes use directives and loads stdlib/user modules.
+// RegisterImports processes use directives and loads modules.
 func RegisterImports(imports []preprocessor.Import) error {
-	importedFuncs = map[string]stdlib.StdFn{}
 	importedUserEnvs = map[string]*Environment{}
 
 	for _, imp := range imports {
-		if strings.HasSuffix(imp.Module, ".sx") {
-			if err := loadUserModule(imp); err != nil {
-				return err
+		// Determine the file path
+		var filePath string
+		modName := imp.Module
+		if strings.HasPrefix(modName, "std/") {
+			// Stdlib: use "std/math" → find stdlib/math.sx
+			stdName := strings.TrimPrefix(modName, "std/")
+			filePath = findStdlib(stdName)
+			if filePath == "" {
+				return fmt.Errorf("Error: unknown stdlib module '%s'", modName)
 			}
-			continue
+			// Override module name for namespace: std/math → math
+			imp.Module = stdName
+		} else if strings.HasSuffix(modName, ".sx") {
+			// User module: use "myfile.sx"
+			filePath = modName
+		} else {
+			return fmt.Errorf("Error: unknown module '%s' (use 'std/name' for stdlib or 'file.sx' for user modules)", modName)
 		}
 
-		mod, ok := stdlib.Registry[imp.Module]
-		if !ok {
-			return fmt.Errorf("Error: unknown module '%s'", imp.Module)
-		}
-
-		switch imp.Function {
-		case "":
-			for name, fn := range mod.Funcs {
-				importedFuncs[imp.Module+"__"+name] = fn
-			}
-		case "*":
-			for name, fn := range mod.Funcs {
-				importedFuncs[name] = fn
-			}
-		default:
-			fn, ok := mod.Funcs[imp.Function]
-			if !ok {
-				return fmt.Errorf("Error: '%s' not found in module '%s'", imp.Function, imp.Module)
-			}
-			importedFuncs[imp.Function] = fn
+		if err := loadModule(imp, filePath); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func loadUserModule(imp preprocessor.Import) error {
-	filename := imp.Module
+func findStdlib(name string) string {
+	// Check SINTAX_HOME/stdlib/
+	home := os.Getenv("SINTAX_HOME")
+	if home == "" {
+		userHome, _ := os.UserHomeDir()
+		home = filepath.Join(userHome, ".sintax")
+	}
+	p := filepath.Join(home, "stdlib", name+".sx")
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
 
-	source, err := os.ReadFile(filename)
+	// Check relative paths (development)
+	for _, rel := range []string{
+		filepath.Join("stdlib", name+".sx"),
+		filepath.Join("..", "stdlib", name+".sx"),
+	} {
+		if _, err := os.Stat(rel); err == nil {
+			abs, _ := filepath.Abs(rel)
+			return abs
+		}
+	}
+
+	// Check relative to executable
+	if exe, err := os.Executable(); err == nil {
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = real
+		}
+		dir := filepath.Dir(exe)
+		for _, rel := range []string{"stdlib", "../stdlib"} {
+			p := filepath.Join(dir, rel, name+".sx")
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+	}
+
+	return ""
+}
+
+func loadModule(imp preprocessor.Import, filePath string) error {
+	source, err := os.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("Error: cannot read module '%s'", filename)
+		return fmt.Errorf("Error: cannot read module '%s'", filePath)
 	}
 
 	result := preprocessor.Process(string(source))
 
 	p := parser.NewParser()
-	program, err := p.ParseString(filename, result.Source)
+	program, err := p.ParseString(filePath, result.Source)
 	if err != nil {
-		return fmt.Errorf("Error: syntax error in module '%s': %v", filename, err)
+		return fmt.Errorf("Error: syntax error in module '%s': %v", filePath, err)
 	}
 
 	modEnv := NewEnvironment()
 	evalStatements(program.Statements, modEnv)
 
-	modName := strings.TrimSuffix(filepath.Base(filename), ".sx")
+	// Derive module name
+	modName := strings.TrimSuffix(filepath.Base(filePath), ".sx")
 
 	switch imp.Function {
 	case "":
@@ -89,24 +117,9 @@ func loadUserModule(imp preprocessor.Import) error {
 	return nil
 }
 
-// callImportedStdlib looks up and calls an imported stdlib function.
-func callImportedStdlib(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
-	fn, ok := importedFuncs[name]
-	if !ok {
-		return nil, false
-	}
-	evaledArgs := make([]object.Object, len(args))
-	for i, arg := range args {
-		evaledArgs[i] = evalExpr(arg, env)
-	}
-	result, err := fn(evaledArgs)
-	if err != nil {
-		runtimeError("%s", err.Error())
-	}
-	return result, true
-}
+// callImportedStdlib — removed, now handled through user module envs
 
-// callUserModule looks up and calls a namespaced user module function (module__func).
+// callUserModule looks up a namespaced module function (module__func).
 func callUserModule(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
 	if !strings.Contains(name, "__") {
 		return nil, false
@@ -119,7 +132,7 @@ func callUserModule(name string, args []*parser.Expr, env *Environment) (object.
 	return callFromEnv(modEnv, parts[1], parts[0], args, env)
 }
 
-// callWildcardModule looks up a function in wildcard/specific user imports.
+// callWildcardModule looks up a function in wildcard/specific imports.
 func callWildcardModule(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
 	for key, modEnv := range importedUserEnvs {
 		if strings.HasPrefix(key, "__wildcard__") || strings.HasPrefix(key, "__specific__"+name+"__") {

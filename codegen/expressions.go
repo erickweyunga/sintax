@@ -210,64 +210,36 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	return result
 }
 
-// Stdlib mappings (preprocessor rewrites math/sqrt → math__sqrt)
-var stdlibOneArg = map[string]string{
-	"math__sqrt":  "sx_math_sqrt",
-	"math__abs":   "sx_math_abs",
-	"math__floor": "sx_math_floor",
-	"math__ceil":  "sx_math_ceil",
-	"math__round": "sx_math_round",
-	"math__sin":   "sx_math_sin",
-	"math__cos":   "sx_math_cos",
-	"math__tan":   "sx_math_tan",
-	"math__asin":  "sx_math_asin",
-	"math__acos":  "sx_math_acos",
-	"math__atan":  "sx_math_atan",
-	"math__log":   "sx_math_log",
-	"math__log2":  "sx_math_log2",
-	"math__log10": "sx_math_log10",
-	"math__exp":   "sx_math_exp",
-	"math__cbrt":  "sx_math_cbrt",
-	"math__sign":  "sx_math_sign",
+// Native function mappings — __native_* calls map directly to C runtime
+var nativeOneArg = map[string]string{
+	"__native_sqrt": "__native_sqrt", "__native_sin": "__native_sin",
+	"__native_cos": "__native_cos", "__native_tan": "__native_tan",
+	"__native_asin": "__native_asin", "__native_acos": "__native_acos",
+	"__native_atan": "__native_atan", "__native_log": "__native_log",
+	"__native_log2": "__native_log2", "__native_log10": "__native_log10",
+	"__native_exp": "__native_exp", "__native_floor": "__native_floor",
+	"__native_ceil": "__native_ceil", "__native_round": "__native_round",
+	"__native_cbrt": "__native_cbrt",
+	"__native_upper": "__native_upper", "__native_lower": "__native_lower",
+	"__native_read_file": "__native_read_file", "__native_file_exists": "__native_file_exists",
+	"__native_delete_file": "__native_delete_file", "__native_getenv": "__native_getenv",
+	"__native_exec": "__native_exec",
 }
 
-var stdlibNoArg = map[string]string{
-	"math__pi":     "sx_math_pi",
-	"math__e":      "sx_math_e",
-	"math__random": "sx_math_random",
+var nativeNoArg = map[string]string{
+	"__native_random": "__native_random",
+	"__native_cwd": "__native_cwd",
+	"__native_time": "__native_time",
 }
 
-var stdlibTwoArg = map[string]string{
-	"math__pow":            "sx_math_pow",
-	"math__min":            "sx_math_min",
-	"math__max":            "sx_math_max",
-	"math__random_between": "sx_math_random_between",
-	// String two-arg
-	"string__split":       "sx_string_split",
-	"string__contains":    "sx_string_contains",
-	"string__starts_with": "sx_string_starts_with",
-	"string__ends_with":   "sx_string_ends_with",
-	"string__join":        "sx_string_join",
+var nativeTwoArg = map[string]string{
+	"__native_pow": "__native_pow",
+	"__native_split": "__native_split",
+	"__native_write_file": "__native_write_file",
 }
 
-var stdlibThreeArg = map[string]string{
-	"string__replace": "sx_string_replace",
-	"os__write":       "sx_os_write",
-}
-
-func init() {
-	// String one-arg
-	stdlibOneArg["string__upper"] = "sx_string_upper"
-	stdlibOneArg["string__lower"] = "sx_string_lower"
-	stdlibOneArg["string__trim"] = "sx_string_trim"
-	// OS one-arg
-	stdlibOneArg["os__read"] = "sx_os_read"
-	stdlibOneArg["os__exists"] = "sx_os_exists"
-	stdlibOneArg["os__delete"] = "sx_os_delete"
-	stdlibOneArg["os__getenv"] = "sx_os_getenv"
-	stdlibOneArg["os__exec"] = "sx_os_exec"
-	// OS no-arg
-	stdlibNoArg["os__cwd"] = "sx_os_cwd"
+var nativeThreeArg = map[string]string{
+	"__native_replace": "__native_replace",
 }
 
 // Builtin mappings
@@ -322,17 +294,17 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.compileExpr(fc.Args[0]) // simplified: no error catching in compiled mode yet
 	}
 
-	// Stdlib: no-arg, one-arg, two-arg
-	if rtName, ok := stdlibNoArg[fc.Name]; ok {
+	// Native bridge: __native_* → C runtime
+	if rtName, ok := nativeNoArg[fc.Name]; ok {
 		return cg.callRT(rtName)
 	}
-	if rtName, ok := stdlibOneArg[fc.Name]; ok {
+	if rtName, ok := nativeOneArg[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]))
 	}
-	if rtName, ok := stdlibTwoArg[fc.Name]; ok {
+	if rtName, ok := nativeTwoArg[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	}
-	if rtName, ok := stdlibThreeArg[fc.Name]; ok {
+	if rtName, ok := nativeThreeArg[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]))
 	}
 

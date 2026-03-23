@@ -1,0 +1,25 @@
+-- OS standard library
+
+fn (str path) read:
+    return __native_read_file(path)
+
+fn (str path, data) write:
+    return __native_write_file(path, data)
+
+fn (str path) bool exists:
+    return __native_file_exists(path)
+
+fn (str path) delete:
+    return __native_delete_file(path)
+
+fn () str cwd:
+    return __native_cwd()
+
+fn (str name) getenv:
+    return __native_getenv(name)
+
+fn (str cmd) str exec:
+    return __native_exec(cmd)
+
+fn () num time:
+    return __native_time()

@@ -1,0 +1,52 @@
+-- String standard library
+
+fn (str s) str upper:
+    return __native_upper(s)
+
+fn (str s) str lower:
+    return __native_lower(s)
+
+fn (str s, str sep) list split:
+    return __native_split(s, sep)
+
+fn (str s, str old, str new) str replace:
+    return __native_replace(s, old, new)
+
+-- Pure Sintax
+
+fn (str s) num length:
+    return len(s)
+
+fn (str s, str sub) bool contains:
+    return sub in s
+
+fn (str s, str prefix) bool starts_with:
+    if len(prefix) > len(s):
+        return false
+    i = 0
+    while i < len(prefix):
+        if s[i] != prefix[i]:
+            return false
+        i += 1
+    return true
+
+fn (str s, str suffix) bool ends_with:
+    if len(suffix) > len(s):
+        return false
+    offset = len(s) - len(suffix)
+    i = 0
+    while i < len(suffix):
+        if s[offset + i] != suffix[i]:
+            return false
+        i += 1
+    return true
+
+fn (list items, str sep) str join:
+    result = ""
+    i = 0
+    while i < len(items):
+        if i > 0:
+            result = result + sep
+        result = result + str(items[i])
+        i += 1
+    return result

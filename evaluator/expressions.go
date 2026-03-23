@@ -234,9 +234,6 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		return fn(fc.Args, env)
 	}
 
-	if result, ok := callImportedStdlib(fc.Name, fc.Args, env); ok {
-		return result
-	}
 	if result, ok := callUserModule(fc.Name, fc.Args, env); ok {
 		return result
 	}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
-	"github.com/erickweyunga/sintax/stdlib"
 )
 
 // Error represents an analysis error with source context.
@@ -69,7 +68,9 @@ type Analyzer struct {
 	imports   []preprocessor.Import
 
 	// imported function names (stdlib or user modules)
-	importedFuncs map[string]*ImportInfo
+	importedFuncs   map[string]*ImportInfo
+	importedModules map[string]bool
+	wildcardModules map[string]bool
 
 	// source info for error messages
 	file    string
@@ -90,6 +91,8 @@ func New(file string, lines []string, lineMap []int) *Analyzer {
 		scopes:           []map[string]*VarInfo{},
 		functions:        make(map[string]*FuncInfo),
 		importedFuncs:    make(map[string]*ImportInfo),
+		importedModules:  make(map[string]bool),
+		wildcardModules:  make(map[string]bool),
 		loopStringConcat: make(map[string]bool),
 		file:             file,
 		lines:            lines,
@@ -391,8 +394,7 @@ func (a *Analyzer) registerImports() {
 			continue
 		}
 
-		mod, ok := stdlib.Registry[imp.Module]
-		if !ok {
+		if !strings.HasPrefix(imp.Module, "std/") {
 			a.errors = append(a.errors, Error{
 				Level:   "error",
 				Message: fmt.Sprintf("Unknown module '%s'", imp.Module),
@@ -401,24 +403,11 @@ func (a *Analyzer) registerImports() {
 			continue
 		}
 
-		switch imp.Function {
-		case "":
-			for name := range mod.Funcs {
-				a.importedFuncs[imp.Module+"__"+name] = &ImportInfo{Module: imp.Module, Function: name}
-			}
-		case "*":
-			for name := range mod.Funcs {
-				a.importedFuncs[name] = &ImportInfo{Module: imp.Module, Function: name}
-			}
-		default:
-			if _, ok := mod.Funcs[imp.Function]; !ok {
-				a.errors = append(a.errors, Error{
-					Level:   "error",
-					Message: fmt.Sprintf("'%s' not found in module '%s'", imp.Function, imp.Module),
-					File:    a.file,
-				})
-				continue
-			}
+		// Register module as known (stdlib is .sx files, can't enumerate at analysis time)
+		a.importedModules[imp.Module] = true
+		if imp.Function == "*" {
+			a.wildcardModules[imp.Module] = true
+		} else if imp.Function != "" {
 			a.importedFuncs[imp.Function] = &ImportInfo{Module: imp.Module, Function: imp.Function}
 		}
 	}
@@ -459,8 +448,8 @@ func (a *Analyzer) checkUnusedImports() {
 		if strings.HasSuffix(mod, ".sx") {
 			continue // skip user module imports
 		}
-		if _, ok := stdlib.Registry[mod]; !ok {
-			continue // already reported as unknown module
+		if !strings.HasPrefix(mod, "std/") && !strings.HasSuffix(mod, ".sx") {
+			continue
 		}
 		if !moduleUsed[mod] {
 			a.addWarning(0, "Imported module '%s' is never used", mod)
@@ -991,6 +980,19 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 	if a.isDefined(fc.Name) {
 		a.markUsed(fc.Name)
 		return
+	}
+
+	// Namespaced module call: math__sqrt from imported std/math
+	if strings.Contains(fc.Name, "__") {
+		parts := strings.SplitN(fc.Name, "__", 2)
+		if a.importedModules["std/"+parts[0]] || a.importedModules[parts[0]] {
+			return // allow — function from imported module
+		}
+	}
+
+	// Wildcard module — allow any function if module is wildcard-imported
+	if len(a.wildcardModules) > 0 {
+		return // can't validate without parsing the .sx file
 	}
 
 	a.addError(line, "Undefined function: '%s'", fc.Name)

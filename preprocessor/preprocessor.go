@@ -1,6 +1,7 @@
 package preprocessor
 
 import (
+	"path/filepath"
 	"strings"
 )
 
@@ -50,14 +51,14 @@ func Process(source string) Result {
 		// Rewrite namespace calls: math/sqrt( → math__sqrt(
 		for _, imp := range imports {
 			if imp.Function == "" {
-				// For user files, use basename without .sx
 				modName := imp.Module
+				// std/math → math (strip std/ prefix)
+				if strings.HasPrefix(modName, "std/") {
+					modName = strings.TrimPrefix(modName, "std/")
+				}
+				// myfile.sx → myfile (strip .sx extension)
 				if strings.HasSuffix(modName, ".sx") {
-					modName = strings.TrimSuffix(modName[:len(modName)-3], "/")
-					// Strip path, keep just filename without extension
-					if idx := strings.LastIndex(modName, "/"); idx != -1 {
-						modName = modName[idx+1:]
-					}
+					modName = strings.TrimSuffix(filepath.Base(modName), ".sx")
 				}
 				line = rewriteNamespaceCalls(line, modName)
 			}
@@ -145,7 +146,21 @@ func parseUse(line string) *Import {
 	}
 	path := line[start+1 : end]
 
-	// Split by /
+	// Handle std/ prefix: use "std/math" → Module: "std/math"
+	// Handle std/math/sqrt → Module: "std/math", Function: "sqrt"
+	// Handle std/math/* → Module: "std/math", Function: "*"
+	if strings.HasPrefix(path, "std/") {
+		rest := strings.TrimPrefix(path, "std/")
+		if idx := strings.Index(rest, "/"); idx != -1 {
+			return &Import{
+				Module:   "std/" + rest[:idx],
+				Function: rest[idx+1:],
+			}
+		}
+		return &Import{Module: path}
+	}
+
+	// User modules: use "file.sx/func" or "file.sx/*"
 	if idx := strings.Index(path, "/"); idx != -1 {
 		return &Import{
 			Module:   path[:idx],

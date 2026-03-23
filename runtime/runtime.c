@@ -46,7 +46,6 @@ static void sx_init_int_cache(void) {
 // --- Constructors ---
 
 SxValue* sx_number(double n) {
-    // Use cache for small integers
     if (n >= 0 && n < SX_INT_CACHE_SIZE && n == (int)n) {
         sx_init_int_cache();
         return &_sx_int_cache[(int)n];
@@ -105,7 +104,6 @@ static void sx_dict_resize(SxDict *d) {
     SxDictBucket *new_buckets = (SxDictBucket*)SX_MALLOC(sizeof(SxDictBucket) * new_cap);
     memset(new_buckets, 0, sizeof(SxDictBucket) * new_cap);
 
-    // Rehash all entries
     for (int i = 0; i < d->capacity; i++) {
         if (d->buckets[i].used) {
             unsigned long h = sx_hash(d->buckets[i].key) & (new_cap - 1);
@@ -122,10 +120,12 @@ static void sx_dict_resize(SxDict *d) {
 
 static SxDictBucket* sx_dict_find(SxDict *d, const char *key) {
     unsigned long h = sx_hash(key) & (d->capacity - 1);
+    int attempts = 0;
     while (d->buckets[h].used) {
         if (strcmp(d->buckets[h].key, key) == 0)
             return &d->buckets[h];
         h = (h + 1) & (d->capacity - 1);
+        if (++attempts >= d->capacity) break; // prevent infinite loop
     }
     return NULL;
 }
@@ -168,6 +168,35 @@ void sx_error(const char *msg) {
     exit(1);
 }
 
+// --- String replace helper (used by sx_method and __native_replace) ---
+
+static SxValue* sx_string_replace_impl(const char *s, const char *old, const char *new_) {
+    int olen = strlen(old), nlen = strlen(new_), slen = strlen(s);
+    if (olen == 0) return sx_string(s);
+
+    // Count occurrences
+    int count = 0;
+    const char *p = s;
+    while ((p = strstr(p, old)) != NULL) { count++; p += olen; }
+
+    // Build result
+    char *result = (char*)SX_MALLOC(slen + count * (nlen - olen) + 1);
+    char *dst = result;
+    p = s;
+    const char *found;
+    while ((found = strstr(p, old)) != NULL) {
+        int chunk = found - p;
+        memcpy(dst, p, chunk); dst += chunk;
+        memcpy(dst, new_, nlen); dst += nlen;
+        p = found + olen;
+    }
+    strcpy(dst, p);
+
+    SxValue *v = sx_alloc(SX_STRING);
+    v->string = result;
+    return v;
+}
+
 // --- Method dispatch ---
 
 SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
@@ -185,20 +214,34 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             SxValue *v = sx_alloc(SX_STRING); v->string = s; return v;
         }
         if (strcmp(name, "trim") == 0) {
-            char *s = obj->string;
-            while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
-            char *end = s + strlen(s) - 1;
-            while (end > s && (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r')) end--;
-            int len = end - s + 1;
+            const char *s = obj->string;
+            while (*s && isspace((unsigned char)*s)) s++;
+            const char *end = s + strlen(s);
+            while (end > s && isspace((unsigned char)*(end - 1))) end--;
+            int len = end - s;
             char *result = (char*)SX_MALLOC(len + 1);
             memcpy(result, s, len);
             result[len] = '\0';
             SxValue *v = sx_alloc(SX_STRING); v->string = result; return v;
         }
         if (strcmp(name, "contains") == 0 && argc == 1) {
+            if (args[0]->type != SX_STRING) sx_error("str.contains() requires a str argument");
             return sx_bool(strstr(obj->string, args[0]->string) != NULL);
         }
+        if (strcmp(name, "starts_with") == 0 && argc == 1) {
+            if (args[0]->type != SX_STRING) sx_error("str.starts_with() requires a str argument");
+            size_t plen = strlen(args[0]->string);
+            return sx_bool(strncmp(obj->string, args[0]->string, plen) == 0);
+        }
+        if (strcmp(name, "ends_with") == 0 && argc == 1) {
+            if (args[0]->type != SX_STRING) sx_error("str.ends_with() requires a str argument");
+            size_t slen = strlen(obj->string);
+            size_t sufflen = strlen(args[0]->string);
+            if (sufflen > slen) return sx_bool(0);
+            return sx_bool(strcmp(obj->string + slen - sufflen, args[0]->string) == 0);
+        }
         if (strcmp(name, "split") == 0 && argc == 1) {
+            if (args[0]->type != SX_STRING) sx_error("str.split() requires a str argument");
             SxValue *list = sx_list_new();
             char *s = sx_strdup(obj->string);
             char *sep = args[0]->string;
@@ -211,10 +254,13 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
                 start = found + sep_len;
             }
             sx_list_append(list, sx_string(start));
+            SX_FREE(s);
             return list;
         }
         if (strcmp(name, "replace") == 0 && argc == 2) {
-            return sx_string(obj->string); // simplified — full replace needs more code
+            if (args[0]->type != SX_STRING || args[1]->type != SX_STRING)
+                sx_error("str.replace() requires str arguments");
+            return sx_string_replace_impl(obj->string, args[0]->string, args[1]->string);
         }
         if (strcmp(name, "type") == 0) return sx_string("str");
     }
@@ -238,18 +284,20 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             return list;
         }
         if (strcmp(name, "join") == 0 && argc == 1) {
+            if (args[0]->type != SX_STRING) sx_error("list.join() requires a str argument");
             char *sep = args[0]->string;
+            int sep_len = strlen(sep);
+            // Calculate total length
             int total = 0;
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *s = sx_to_string(obj->list.items[i]);
                 total += strlen(s->string);
-                if (i > 0) total += strlen(sep);
+                if (i > 0) total += sep_len;
             }
             char *result = (char*)SX_MALLOC(total + 1);
-            result[0] = '\0';
             int offset = 0;
             for (int i = 0; i < obj->list.len; i++) {
-                if (i > 0) { memcpy(result + offset, sep, strlen(sep)); offset += strlen(sep); }
+                if (i > 0) { memcpy(result + offset, sep, sep_len); offset += sep_len; }
                 SxValue *s = sx_to_string(obj->list.items[i]);
                 int len = strlen(s->string);
                 memcpy(result + offset, s->string, len);
@@ -258,7 +306,8 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             result[offset] = '\0';
             SxValue *v = sx_alloc(SX_STRING); v->string = result; return v;
         }
-        if (strcmp(name, "map") == 0 && argc == 1 && args[0]->type == SX_FUNCTION) {
+        if (strcmp(name, "map") == 0 && argc == 1) {
+            if (args[0]->type != SX_FUNCTION) sx_error("list.map() argument must be a function");
             SxValue *list = sx_list_new();
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *item = obj->list.items[i];
@@ -266,7 +315,8 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             }
             return list;
         }
-        if (strcmp(name, "filter") == 0 && argc == 1 && args[0]->type == SX_FUNCTION) {
+        if (strcmp(name, "filter") == 0 && argc == 1) {
+            if (args[0]->type != SX_FUNCTION) sx_error("list.filter() argument must be a function");
             SxValue *list = sx_list_new();
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *item = obj->list.items[i];
@@ -275,7 +325,8 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             }
             return list;
         }
-        if (strcmp(name, "reduce") == 0 && argc == 2 && args[0]->type == SX_FUNCTION) {
+        if (strcmp(name, "reduce") == 0 && argc == 2) {
+            if (args[0]->type != SX_FUNCTION) sx_error("list.reduce() first argument must be a function");
             SxValue *acc = args[1];
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *pair[2] = {acc, obj->list.items[i]};
@@ -283,7 +334,8 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             }
             return acc;
         }
-        if (strcmp(name, "each") == 0 && argc == 1 && args[0]->type == SX_FUNCTION) {
+        if (strcmp(name, "each") == 0 && argc == 1) {
+            if (args[0]->type != SX_FUNCTION) sx_error("list.each() argument must be a function");
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *item = obj->list.items[i];
                 args[0]->function(&item, 1);
@@ -302,7 +354,7 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
         if (strcmp(name, "type") == 0) return sx_string("dict");
     }
 
-    // Num methods
+    // Num/Bool methods
     if (obj->type == SX_NUMBER) {
         if (strcmp(name, "type") == 0) return sx_string("num");
     }
@@ -322,6 +374,7 @@ int sx_truthy(SxValue *a) {
     if (!a) return 0;
     switch (a->type) {
         case SX_NULL: return 0;
+        case SX_ERROR: return 0;
         case SX_BOOL: return a->boolean;
         case SX_NUMBER: return a->number != 0;
         case SX_STRING: return a->string[0] != '\0';
@@ -377,7 +430,7 @@ SxValue* sx_mod(SxValue *a, SxValue *b) {
         if (b->number == 0) sx_error("Division by zero");
         return sx_number((double)((long long)a->number % (long long)b->number));
     }
-    sx_error("Operation '%' requires num values");
+    sx_error("Operation '%%' requires num values");
     return sx_null();
 }
 
@@ -549,19 +602,16 @@ void sx_dict_set(SxValue *dict, SxValue *key, SxValue *val) {
     if (dict->type != SX_DICT) sx_error("not a dict");
     if (key->type != SX_STRING) sx_error("Dict key must be a str");
 
-    // Check if key exists
     SxDictBucket *existing = sx_dict_find(&dict->dict, key->string);
     if (existing) {
         existing->value = val;
         return;
     }
 
-    // Resize if needed
     if ((double)dict->dict.len / dict->dict.capacity >= SX_DICT_LOAD_FACTOR) {
         sx_dict_resize(&dict->dict);
     }
 
-    // Insert into hash table
     unsigned long h = sx_hash(key->string) & (dict->dict.capacity - 1);
     while (dict->dict.buckets[h].used)
         h = (h + 1) & (dict->dict.capacity - 1);
@@ -570,7 +620,6 @@ void sx_dict_set(SxValue *dict, SxValue *key, SxValue *val) {
     dict->dict.buckets[h].value = val;
     dict->dict.buckets[h].used = 1;
 
-    // Track insertion order
     sx_dict_add_key(&dict->dict, key->string);
     dict->dict.len++;
 }
@@ -708,6 +757,7 @@ SxValue* sx_to_string(SxValue *v) {
         case SX_STRING: return v;
         case SX_BOOL: return sx_string(v->boolean ? "true" : "false");
         case SX_NULL: return sx_string("null");
+        case SX_ERROR: return sx_string(v->string);
         default: return sx_string("<object>");
     }
 }
@@ -718,29 +768,28 @@ SxValue* sx_to_bool(SxValue *v) {
 
 SxValue* sx_concat(int count, ...) {
     va_list args;
-    // First pass: calculate total length
-    va_start(args, count);
+
+    // Convert all values to strings once
+    SxValue **strs = (SxValue**)SX_MALLOC(sizeof(SxValue*) * count);
     size_t total = 0;
+    va_start(args, count);
     for (int i = 0; i < count; i++) {
         SxValue *v = va_arg(args, SxValue*);
-        SxValue *s = sx_to_string(v);
-        total += strlen(s->string);
+        strs[i] = sx_to_string(v);
+        total += strlen(strs[i]->string);
     }
     va_end(args);
 
-    // Second pass: build string with running offset (O(n) instead of O(n^2))
+    // Build result in one pass
     char *result = (char*)SX_MALLOC(total + 1);
     size_t offset = 0;
-    va_start(args, count);
     for (int i = 0; i < count; i++) {
-        SxValue *v = va_arg(args, SxValue*);
-        SxValue *s = sx_to_string(v);
-        size_t len = strlen(s->string);
-        memcpy(result + offset, s->string, len);
+        size_t len = strlen(strs[i]->string);
+        memcpy(result + offset, strs[i]->string, len);
         offset += len;
     }
     result[offset] = '\0';
-    va_end(args);
+    SX_FREE(strs);
 
     SxValue *sv = sx_alloc(SX_STRING);
     sv->string = result;
