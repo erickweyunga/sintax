@@ -1,0 +1,62 @@
+-- Heavy performance test (native-compatible)
+
+-- 1. Arithmetic: sum 1 to 1 million
+a = 0
+total = 0
+while a < 1000000:
+    total = total + a
+    a += 1
+>> "1. Sum 1M:"
+>> total
+
+-- 2. Fibonacci(35) recursive
+fn (num n) num fib:
+    if n <= 1:
+        return n
+    else:
+        return fib(n - 1) + fib(n - 2)
+
+>> "2. Fib(35):"
+>> fib(35)
+
+-- 3. String concatenation (10K)
+s = ""
+b = 0
+while b < 10000:
+    s += "x"
+    b += 1
+>> "3. String 10K:"
+>> len(s)
+
+-- 4. List: push 100K items
+items = []
+c = 0
+while c < 100000:
+    push(items, c)
+    c += 1
+>> "4. List 100K:"
+>> len(items)
+
+-- 5. Nested loop: 1000 x 1000
+count = 0
+d = 0
+while d < 1000:
+    e = 0
+    while e < 1000:
+        count += 1
+        e += 1
+    d += 1
+>> "5. Nested 1Kx1K:"
+>> count
+
+-- 6. Factorial(20)
+fn (num n) num factorial:
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+>> "6. Factorial(20):"
+>> factorial(20)
+
+>> "Done!"
