@@ -79,6 +79,24 @@ func EvalWithEnv(program *parser.Program, env *Environment) (result object.Objec
 	return result, nil
 }
 
+// EvalDefinitionsOnly executes only function definitions and assignments.
+// Used by the test runner to set up functions without side effects.
+func EvalDefinitionsOnly(program *parser.Program, env *Environment) {
+	for _, stmt := range program.Statements {
+		switch {
+		case stmt.FuncDef != nil:
+			evalFuncDef(stmt.FuncDef, env)
+		case stmt.Assignment != nil:
+			// Only evaluate if the value is a simple literal or function call
+			// Skip if it would cause side effects
+			evalAssignment(stmt.Assignment, env)
+		case stmt.TypedAssign != nil:
+			evalTypedAssign(stmt.TypedAssign, env)
+		// Skip: PrintStmt, ExprStmt, IfStmt, WhileStmt, ForStmt, etc.
+		}
+	}
+}
+
 func evalStatements(stmts []*parser.Statement, env *Environment) object.Object {
 	var result object.Object
 	for _, stmt := range stmts {

@@ -102,12 +102,9 @@ func runTests(filename string, tests []TestCase) (passed, failed int) {
 		return 0, len(tests)
 	}
 
-	// Execute the file to define functions/variables (suppress stdout)
-	oldStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
+	// Sandbox: only execute definitions (fn, assignments), skip side effects
 	env := evaluator.NewEnvironment()
-	evaluator.EvalWithEnv(program, env)
-	os.Stdout = oldStdout
+	evaluator.EvalDefinitionsOnly(program, env)
 
 	// Run each test
 	for _, tc := range tests {
