@@ -18,6 +18,8 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "run":
+		runCompiledCommand()
 	case "build":
 		buildCommand()
 	case "test":
@@ -27,11 +29,11 @@ func main() {
 	case "help", "--help", "-h":
 		printHelp()
 	default:
-		runCommand()
+		interpretCommand()
 	}
 }
 
-func runCommand() {
+func interpretCommand() {
 	filename := os.Args[1]
 	program, sourceStr, result := parseFile(filename)
 
@@ -57,7 +59,8 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  sintax                     REPL")
-	fmt.Println("  sintax <file.sx>           Run a program file")
+	fmt.Println("  sintax <file.sx>           Interpret (no compile)")
+	fmt.Println("  sintax run <file.sx>       Compile and run (cached)")
 	fmt.Println("  sintax build <file.sx>     Compile to binary")
 	fmt.Println("  sintax build <f.sx> -o out Compile with custom name")
 	fmt.Println("  sintax test                Test all .sx files")

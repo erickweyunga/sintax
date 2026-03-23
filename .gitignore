@@ -1,6 +1,7 @@
 # Binary
 sintax
 *.exe
+.sintax/
 
 # Build artifacts
 *.ll
