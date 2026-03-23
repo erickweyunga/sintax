@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/erickweyunga/sintax/evaluator"
 	"github.com/erickweyunga/sintax/object"
@@ -12,10 +13,27 @@ import (
 	"github.com/erickweyunga/sintax/preprocessor"
 )
 
-// TestCase represents a single -- test: directive.
+const (
+	green  = "\033[32m"
+	red    = "\033[31m"
+	yellow = "\033[33m"
+	dim    = "\033[2m"
+	bold   = "\033[1m"
+	reset  = "\033[0m"
+)
+
 type TestCase struct {
 	Expr string
 	Line int
+}
+
+type FileResult struct {
+	Name     string
+	Tests    int
+	Passed   int
+	Failed   int
+	Duration time.Duration
+	Failures []string
 }
 
 func testCommand() {
@@ -24,10 +42,8 @@ func testCommand() {
 	if len(os.Args) >= 3 {
 		files = append(files, os.Args[2:]...)
 	} else {
-		// Find all .sx files in current directory
 		matches, _ := filepath.Glob("*.sx")
 		files = append(files, matches...)
-		// Also check examples/
 		exMatches, _ := filepath.Glob("examples/*.sx")
 		files = append(files, exMatches...)
 	}
@@ -37,37 +53,63 @@ func testCommand() {
 		return
 	}
 
-	totalTests := 0
-	totalPassed := 0
-	totalFailed := 0
+	totalStart := time.Now()
+	var results []FileResult
 
 	for _, file := range files {
 		tests := extractTests(file)
 		if len(tests) == 0 {
 			continue
 		}
-
-		fmt.Printf("Testing %s...\n", file)
-
-		passed, failed := runTests(file, tests)
-		totalTests += len(tests)
-		totalPassed += passed
-		totalFailed += failed
-		fmt.Println()
+		r := runTestFile(file, tests)
+		results = append(results, r)
 	}
 
-	if totalTests == 0 {
+	if len(results) == 0 {
 		fmt.Println("No tests found (add -- test: comments to your .sx files)")
 		return
 	}
 
-	fmt.Printf("%d tests, %d passed, %d failed\n", totalTests, totalPassed, totalFailed)
+	totalDuration := time.Since(totalStart)
+
+	// Print results
+	fmt.Println()
+	totalTests := 0
+	totalPassed := 0
+	totalFailed := 0
+
+	for _, r := range results {
+		icon := green + "PASS" + reset
+		if r.Failed > 0 {
+			icon = red + "FAIL" + reset
+		}
+		fmt.Printf("  %s  %s %s(%d tests, %s)%s\n",
+			icon, r.Name, dim, r.Tests, r.Duration.Round(time.Millisecond), reset)
+
+		for _, f := range r.Failures {
+			fmt.Printf("         %s%s%s\n", red, f, reset)
+		}
+
+		totalTests += r.Tests
+		totalPassed += r.Passed
+		totalFailed += r.Failed
+	}
+
+	fmt.Println()
+	fmt.Printf("  %sFiles:%s   %d\n", dim, reset, len(results))
+	fmt.Printf("  %sTests:%s   %d passed", dim, reset, totalPassed)
+	if totalFailed > 0 {
+		fmt.Printf(", %s%d failed%s", red, totalFailed, reset)
+	}
+	fmt.Println()
+	fmt.Printf("  %sTime:%s    %s\n", dim, reset, totalDuration.Round(time.Millisecond))
+	fmt.Println()
+
 	if totalFailed > 0 {
 		os.Exit(1)
 	}
 }
 
-// extractTests reads a file and pulls out all -- test: directives.
 func extractTests(filename string) []TestCase {
 	source, err := os.ReadFile(filename)
 	if err != nil {
@@ -87,8 +129,10 @@ func extractTests(filename string) []TestCase {
 	return tests
 }
 
-// runTests executes the file (to define functions), then runs each test.
-func runTests(filename string, tests []TestCase) (passed, failed int) {
+func runTestFile(filename string, tests []TestCase) FileResult {
+	start := time.Now()
+	r := FileResult{Name: filename, Tests: len(tests)}
+
 	source, _ := os.ReadFile(filename)
 	sourceStr := string(source)
 	result := preprocessor.Process(sourceStr)
@@ -98,55 +142,42 @@ func runTests(filename string, tests []TestCase) (passed, failed int) {
 	p := parser.NewParser()
 	program, err := p.ParseString(filename, result.Source)
 	if err != nil {
-		fmt.Printf("  Syntax error: %s\n", err.Error())
-		return 0, len(tests)
+		r.Failed = len(tests)
+		r.Failures = append(r.Failures, fmt.Sprintf("Syntax error: %s", err.Error()))
+		r.Duration = time.Since(start)
+		return r
 	}
 
-	// Sandbox: only execute definitions (fn, assignments), skip side effects
 	env := evaluator.NewEnvironment()
 	evaluator.EvalDefinitionsOnly(program, env)
 
-	// Run each test
 	for _, tc := range tests {
-		ok := runSingleTest(tc, env)
-		if ok {
-			passed++
+		if runSingleTest(tc, env) {
+			r.Passed++
 		} else {
-			failed++
+			r.Failed++
+			r.Failures = append(r.Failures, fmt.Sprintf("line %d: %s", tc.Line, tc.Expr))
 		}
 	}
-	return
+
+	r.Duration = time.Since(start)
+	return r
 }
 
 func runSingleTest(tc TestCase, env *evaluator.Environment) bool {
-	// Wrap test expression as a statement
 	testSource := tc.Expr + "\n"
 	result := preprocessor.Process(testSource)
 
 	p := parser.NewParser()
 	program, err := p.ParseString("test", result.Source)
 	if err != nil {
-		fmt.Printf("  \033[31m✗\033[0m line %d: %s  →  parse error\n", tc.Line, tc.Expr)
 		return false
 	}
 
 	val, err := evaluator.EvalWithEnv(program, env)
 	if err != nil {
-		fmt.Printf("  \033[31m✗\033[0m line %d: %s  →  %s\n", tc.Line, tc.Expr, err.Error())
 		return false
 	}
 
-	// Check if result is truthy (for assertions like x == 5)
-	if val == nil {
-		fmt.Printf("  \033[31m✗\033[0m line %d: %s  →  null\n", tc.Line, tc.Expr)
-		return false
-	}
-
-	if !object.IsTruthy(val) {
-		fmt.Printf("  \033[31m✗\033[0m line %d: %s  →  %s\n", tc.Line, tc.Expr, val.Inspect())
-		return false
-	}
-
-	fmt.Printf("  \033[32m✓\033[0m %s\n", tc.Expr)
-	return true
+	return val != nil && object.IsTruthy(val)
 }
