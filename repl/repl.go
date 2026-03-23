@@ -51,7 +51,7 @@ func Start() {
 
 		program, err := p.ParseString("repl", processed.Source)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Kosa la sintaksia: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Kosa la sintaksia: %s\n", translateParseError(err.Error()))
 			continue
 		}
 
@@ -67,6 +67,16 @@ func Start() {
 			}
 		}
 	}
+}
+
+func translateParseError(msg string) string {
+	r := strings.NewReplacer(
+		"unexpected token", "tokeni isiyojulikana",
+		"expected", "ilitarajiwa",
+		"invalid input text", "maandishi batili",
+		"lexer: ", "",
+	)
+	return r.Replace(msg)
 }
 
 // readBlock collects indented lines for a block until an empty line is entered.

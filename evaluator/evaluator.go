@@ -390,6 +390,17 @@ func evalUnary(u *parser.Unary, env *Environment) object.Object {
 		val := evalUnary(u.Not, env)
 		return &object.BoolObj{Value: !object.IsTruthy(val)}
 	}
+	if u.Neg != nil {
+		val := evalUnary(u.Neg, env)
+		num, ok := val.(*object.NumberObj)
+		if !ok {
+			runtimeError("'-' inahitaji nambari")
+		}
+		return &object.NumberObj{Value: -num.Value}
+	}
+	if u.Pos != nil {
+		return evalUnary(u.Pos, env)
+	}
 	return evalPrimary(u.Primary, env)
 }
 

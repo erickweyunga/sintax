@@ -170,6 +170,8 @@ type MulOp struct {
 
 type Unary struct {
 	Not     *Unary   `( "si" @@`
+	Neg     *Unary   `| "-" @@`
+	Pos     *Unary   `| "+" @@`
 	Primary *Primary `| @@ )`
 }
 

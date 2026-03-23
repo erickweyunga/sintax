@@ -651,6 +651,14 @@ func (cg *CodeGen) compileUnary(u *parser.Unary) llvmValue.Value {
 		val := cg.compileUnary(u.Not)
 		return cg.callRT("sx_not", val)
 	}
+	if u.Neg != nil {
+		val := cg.compileUnary(u.Neg)
+		zero := cg.callRT("sx_number", constant.NewFloat(types.Double, 0))
+		return cg.callRT("sx_sub", zero, val)
+	}
+	if u.Pos != nil {
+		return cg.compileUnary(u.Pos)
+	}
 	return cg.compilePrimary(u.Primary)
 }
 

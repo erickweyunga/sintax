@@ -148,11 +148,21 @@ func parseFile(filename string) (*parser.Program, string, preprocessor.Result) {
 	p := parser.NewParser()
 	program, err := p.ParseString(filename, result.Source)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Kosa la sintaksia: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Kosa la sintaksia: %s\n", translateParseError(err.Error()))
 		os.Exit(1)
 	}
 
 	return program, sourceStr, result
+}
+
+func translateParseError(msg string) string {
+	r := strings.NewReplacer(
+		"unexpected token", "tokeni isiyojulikana",
+		"expected", "ilitarajiwa",
+		"invalid input text", "maandishi batili",
+		"lexer: ", "",
+	)
+	return r.Replace(msg)
 }
 
 func findRuntime() string {
