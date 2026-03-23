@@ -93,6 +93,11 @@ type ContinueObj struct{}
 
 func (o *ContinueObj) Inspect() string { return "1" }
 
+// ErrorObj represents a caught runtime error.
+type ErrorObj struct{ Message string }
+
+func (o *ErrorObj) Inspect() string { return "error: " + o.Message }
+
 // FuncParam holds a function parameter name and optional type.
 type FuncParam struct {
 	Name string
@@ -125,6 +130,8 @@ func TypeName(obj Object) string {
 		return "dict"
 	case *FuncObj:
 		return "fn"
+	case *ErrorObj:
+		return "error"
 	default:
 		return "null"
 	}

@@ -3,6 +3,8 @@ package evaluator
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/erickweyunga/sintax/object"
@@ -69,14 +71,26 @@ func recoverError(err *error) {
 }
 
 // importedFuncs holds stdlib functions registered via use.
-// Key format: "module/func" for namespaced, "func" for wildcard/specific.
 var importedFuncs = map[string]stdlib.StdFn{}
 
-// RegisterImports processes use directives and loads stdlib functions.
+// importedUserEnvs holds environments from imported .sx files.
+var importedUserEnvs = map[string]*Environment{}
+
+// RegisterImports processes use directives and loads stdlib/user modules.
 func RegisterImports(imports []preprocessor.Import) error {
 	importedFuncs = map[string]stdlib.StdFn{}
+	importedUserEnvs = map[string]*Environment{}
 
 	for _, imp := range imports {
+		// Check if it's a user file (.sx extension)
+		if strings.HasSuffix(imp.Module, ".sx") {
+			if err := loadUserModule(imp); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Stdlib module
 		mod, ok := stdlib.Registry[imp.Module]
 		if !ok {
 			return fmt.Errorf("Error: unknown module '%s'", imp.Module)
@@ -84,17 +98,14 @@ func RegisterImports(imports []preprocessor.Import) error {
 
 		switch imp.Function {
 		case "":
-			// Namespaced: math/sqrt → math__sqrt (preprocessor rewrites the call)
 			for name, fn := range mod.Funcs {
 				importedFuncs[imp.Module+"__"+name] = fn
 			}
 		case "*":
-			// Wildcard: import all directly
 			for name, fn := range mod.Funcs {
 				importedFuncs[name] = fn
 			}
 		default:
-			// Specific: import one function directly
 			fn, ok := mod.Funcs[imp.Function]
 			if !ok {
 				return fmt.Errorf("Error: '%s' not found in module '%s'", imp.Function, imp.Module)
@@ -102,6 +113,45 @@ func RegisterImports(imports []preprocessor.Import) error {
 			importedFuncs[imp.Function] = fn
 		}
 	}
+	return nil
+}
+
+func loadUserModule(imp preprocessor.Import) error {
+	filename := imp.Module
+
+	source, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("Error: cannot read module '%s'", filename)
+	}
+
+	result := preprocessor.Process(string(source))
+
+	// Handle nested imports
+	p := parser.NewParser()
+	program, err := p.ParseString(filename, result.Source)
+	if err != nil {
+		return fmt.Errorf("Error: syntax error in module '%s': %v", filename, err)
+	}
+
+	// Evaluate in a fresh environment
+	modEnv := NewEnvironment()
+	evalStatements(program.Statements, modEnv)
+
+	// Derive module name from filename (strip .sx and path)
+	modName := strings.TrimSuffix(filepath.Base(filename), ".sx")
+
+	switch imp.Function {
+	case "":
+		// Namespaced: store env for module__func lookups
+		importedUserEnvs[modName] = modEnv
+	case "*":
+		// Wildcard: inject all functions into current scope
+		importedUserEnvs["__wildcard__"+modName] = modEnv
+	default:
+		// Specific function: inject one function
+		importedUserEnvs["__specific__"+imp.Function+"__"+modName] = modEnv
+	}
+
 	return nil
 }
 
@@ -370,6 +420,20 @@ func evalAssignment(assign *parser.Assignment, env *Environment) object.Object {
 	return val
 }
 
+// evalTry evaluates an expression, catching any runtime errors.
+func evalTry(expr *parser.Expr, env *Environment) (result object.Object) {
+	defer func() {
+		if r := recover(); r != nil {
+			if re, ok := r.(RuntimeError); ok {
+				result = &object.ErrorObj{Message: re.Message}
+			} else {
+				panic(r) // re-panic non-RuntimeError panics
+			}
+		}
+	}()
+	return evalExpr(expr, env)
+}
+
 // Expression evaluation
 
 func evalExpr(expr *parser.Expr, env *Environment) object.Object {
@@ -582,6 +646,14 @@ func evalListLit(ll *parser.ListLit, env *Environment) object.Object {
 }
 
 func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
+	// try() — catch runtime errors, return ErrorObj instead of crashing
+	if fc.Name == "try" {
+		if len(fc.Args) != 1 {
+			runtimeError("try() requires 1 argument")
+		}
+		return evalTry(fc.Args[0], env)
+	}
+
 	// Check built-in functions first
 	if fn, ok := builtins[fc.Name]; ok {
 		return fn(fc.Args, env)
@@ -600,7 +672,50 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		return result
 	}
 
-	// User-defined functions
+	// Check user module functions (namespaced: module__func)
+	if strings.Contains(fc.Name, "__") {
+		parts := strings.SplitN(fc.Name, "__", 2)
+		if modEnv, ok := importedUserEnvs[parts[0]]; ok {
+			obj, ok := modEnv.Get(parts[1])
+			if !ok {
+				runtimeError("'%s' not found in module '%s'", parts[1], parts[0])
+			}
+			fn, ok := obj.(*object.FuncObj)
+			if !ok {
+				runtimeError("'%s' is not a function in module '%s'", parts[1], parts[0])
+			}
+			fnEnv := NewEnclosed(fn.Env.(*Environment))
+			for i, param := range fn.Params {
+				fnEnv.Set(param.Name, evalExpr(fc.Args[i], env))
+			}
+			result := evalStatements(fn.Body.Statements, fnEnv)
+			if ret, ok := result.(*object.ReturnObj); ok {
+				return ret.Value
+			}
+			return result
+		}
+	}
+
+	// Check wildcard user module imports
+	for key, modEnv := range importedUserEnvs {
+		if strings.HasPrefix(key, "__wildcard__") || strings.HasPrefix(key, "__specific__"+fc.Name+"__") {
+			if obj, ok := modEnv.Get(fc.Name); ok {
+				if fn, ok := obj.(*object.FuncObj); ok {
+					fnEnv := NewEnclosed(fn.Env.(*Environment))
+					for i, param := range fn.Params {
+						fnEnv.Set(param.Name, evalExpr(fc.Args[i], env))
+					}
+					result := evalStatements(fn.Body.Statements, fnEnv)
+					if ret, ok := result.(*object.ReturnObj); ok {
+						return ret.Value
+					}
+					return result
+				}
+			}
+		}
+	}
+
+	// User-defined functions (local scope)
 	obj, ok := env.Get(fc.Name)
 	if !ok {
 		runtimeError("Undefined function: '%s'", fc.Name)

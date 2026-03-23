@@ -50,8 +50,16 @@ func Process(source string) Result {
 		// Rewrite namespace calls: math/sqrt( → math__sqrt(
 		for _, imp := range imports {
 			if imp.Function == "" {
-				// Namespaced import — rewrite module/func( to module__func(
-				line = rewriteNamespaceCalls(line, imp.Module)
+				// For user files, use basename without .sx
+				modName := imp.Module
+				if strings.HasSuffix(modName, ".sx") {
+					modName = strings.TrimSuffix(modName[:len(modName)-3], "/")
+					// Strip path, keep just filename without extension
+					if idx := strings.LastIndex(modName, "/"); idx != -1 {
+						modName = modName[idx+1:]
+					}
+				}
+				line = rewriteNamespaceCalls(line, modName)
 			}
 		}
 
