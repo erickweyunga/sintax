@@ -37,7 +37,16 @@ func buildCommand() {
 		outputName = strings.TrimSuffix(base, filepath.Ext(base))
 	}
 
-	program, _, _ := parseFile(filename)
+	program, sourceStr, result := parseFile(filename)
+
+	// Analyze before compiling
+	lines := strings.Split(sourceStr, "\n")
+	if errors := analyzeProgram(program, result, filename, lines); len(errors) > 0 {
+		printErrors(errors)
+		if hasErrors(errors) {
+			os.Exit(1)
+		}
+	}
 
 	cg := codegen.New()
 	llvmIR := cg.Generate(program)
@@ -50,10 +59,23 @@ func buildCommand() {
 	defer os.Remove(irFile)
 
 	runtimePath := findRuntime()
+	runtimeDir := filepath.Dir(runtimePath)
+
+	// Find all .c files in runtime directory
+	cFiles := []string{runtimePath}
+	if entries, err := os.ReadDir(runtimeDir); err == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".c") && e.Name() != "runtime.c" {
+				cFiles = append(cFiles, filepath.Join(runtimeDir, e.Name()))
+			}
+		}
+	}
 
 	fmt.Printf("Compiling %s → %s...\n", filename, outputName)
 
-	args := []string{"-O2", "-Wno-override-module", "-o", outputName, irFile, runtimePath, "-lm"}
+	args := []string{"-O2", "-Wno-override-module", "-o", outputName, irFile}
+	args = append(args, cFiles...)
+	args = append(args, "-lm")
 
 	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
 		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)

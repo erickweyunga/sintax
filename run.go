@@ -46,7 +46,17 @@ func runCompiledCommand() {
 	}
 
 	// Compile
-	program, _, _ := parseFile(filename)
+	program, sourceStr, result := parseFile(filename)
+
+	// Analyze before compiling
+	srcLines := strings.Split(sourceStr, "\n")
+	if errors := analyzeProgram(program, result, filename, srcLines); len(errors) > 0 {
+		printErrors(errors)
+		if hasErrors(errors) {
+			os.Exit(1)
+		}
+	}
+
 	cg := codegen.New()
 	llvmIR := cg.Generate(program)
 
@@ -57,8 +67,20 @@ func runCompiledCommand() {
 	}
 
 	runtimePath := findRuntime()
+	runtimeDir := filepath.Dir(runtimePath)
 
-	args := []string{"-O2", "-Wno-override-module", "-o", binaryPath, irFile, runtimePath, "-lm"}
+	cFiles := []string{runtimePath}
+	if entries, err := os.ReadDir(runtimeDir); err == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".c") && e.Name() != "runtime.c" {
+				cFiles = append(cFiles, filepath.Join(runtimeDir, e.Name()))
+			}
+		}
+	}
+
+	args := []string{"-O2", "-Wno-override-module", "-o", binaryPath, irFile}
+	args = append(args, cFiles...)
+	args = append(args, "-lm")
 
 	// Check for Boehm GC
 	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/erickweyunga/sintax/analyzer"
 	"github.com/erickweyunga/sintax/evaluator"
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
@@ -22,6 +23,8 @@ func main() {
 		runCompiledCommand()
 	case "build":
 		buildCommand()
+	case "check":
+		checkCommand()
 	case "test":
 		testCommand()
 	case "lib":
@@ -36,10 +39,19 @@ func main() {
 func interpretCommand() {
 	filename := os.Args[1]
 	program, sourceStr, result := parseFile(filename)
+	lines := strings.Split(sourceStr, "\n")
+
+	// Analyze before running
+	if errors := analyzeProgram(program, result, filename, lines); len(errors) > 0 {
+		printErrors(errors)
+		if hasErrors(errors) {
+			os.Exit(1)
+		}
+	}
 
 	evaluator.SetSourceInfo(&evaluator.SourceInfo{
 		Filename: filename,
-		Lines:    strings.Split(sourceStr, "\n"),
+		Lines:    lines,
 		LineMap:  result.LineMap,
 	})
 
@@ -54,12 +66,80 @@ func interpretCommand() {
 	}
 }
 
+func checkCommand() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: sintax check <file.sx>\n")
+		os.Exit(1)
+	}
+
+	filename := os.Args[2]
+	program, sourceStr, result := parseFile(filename)
+	lines := strings.Split(sourceStr, "\n")
+
+	errors := analyzeProgram(program, result, filename, lines)
+	if len(errors) > 0 {
+		printErrors(errors)
+		if hasErrors(errors) {
+			os.Exit(1)
+		}
+		return
+	}
+
+	fmt.Printf("\033[32mAll checks passed\033[0m  %s\n", filename)
+}
+
+func analyzeProgram(program *parser.Program, result preprocessor.Result, filename string, lines []string) []analyzer.Error {
+	return analyzer.Analyze(program, result.Imports, filename, lines, result.LineMap)
+}
+
+func printErrors(errors []analyzer.Error) {
+	for _, e := range errors {
+		fmt.Fprint(os.Stderr, e.Format())
+	}
+
+	errCount := 0
+	warnCount := 0
+	for _, e := range errors {
+		if e.Level == "warning" {
+			warnCount++
+		} else {
+			errCount++
+		}
+	}
+
+	summary := ""
+	if errCount > 0 {
+		summary += fmt.Sprintf("%d error(s)", errCount)
+	}
+	if warnCount > 0 {
+		if summary != "" {
+			summary += ", "
+		}
+		summary += fmt.Sprintf("%d warning(s)", warnCount)
+	}
+	if errCount > 0 {
+		fmt.Fprintf(os.Stderr, "\n%s. Aborted.\n", summary)
+	} else {
+		fmt.Fprintf(os.Stderr, "\n%s.\n", summary)
+	}
+}
+
+func hasErrors(errors []analyzer.Error) bool {
+	for _, e := range errors {
+		if e.Level == "error" {
+			return true
+		}
+	}
+	return false
+}
+
 func printHelp() {
 	fmt.Println("Sintax")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  sintax                     REPL")
-	fmt.Println("  sintax <file.sx>           Interpret (no compile)")
+	fmt.Println("  sintax <file.sx>           Analyze and interpret")
+	fmt.Println("  sintax check <file.sx>     Analyze only (no run)")
 	fmt.Println("  sintax run <file.sx>       Compile and run (cached)")
 	fmt.Println("  sintax build <file.sx>     Compile to binary")
 	fmt.Println("  sintax build <f.sx> -o out Compile with custom name")

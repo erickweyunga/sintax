@@ -62,12 +62,12 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	prevBlock := cg.block
 	prevVars := cg.vars // save outer function's vars
 
-	params := make([]*ir.Param, len(fd.Params))
-	for i, p := range fd.Params {
-		params[i] = ir.NewParam(p.Name, sxValuePtr)
+	// Use forward-declared function, or declare now (for nested functions)
+	fn, exists := cg.userFuncs[fd.Name]
+	if !exists {
+		cg.forwardDeclare(fd)
+		fn = cg.userFuncs[fd.Name]
 	}
-	fn := cg.mod.NewFunc("sx_user_"+fd.Name, sxValuePtr, params...)
-	cg.userFuncs[fd.Name] = fn
 
 	entry := fn.NewBlock("entry")
 	cg.fn = fn

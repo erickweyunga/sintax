@@ -10,7 +10,9 @@ typedef enum {
     SX_STRING = 2,
     SX_BOOL = 3,
     SX_LIST = 4,
-    SX_DICT = 5
+    SX_DICT = 5,
+    SX_FUNCTION = 6,
+    SX_ERROR = 7
 } SxType;
 
 // Forward declaration
@@ -39,6 +41,9 @@ typedef struct {
     int keys_cap;
 } SxDict;
 
+// Function pointer type: takes an array of SxValue* args and count, returns SxValue*
+typedef SxValue* (*SxFnPtr)(SxValue** args, int argc);
+
 // Tagged value — the core type of Sintax
 struct SxValue {
     SxType type;
@@ -48,8 +53,24 @@ struct SxValue {
         int boolean;
         SxList list;
         SxDict dict;
+        SxFnPtr function;  // SX_FUNCTION
     };
 };
+
+// Memory helpers (exposed for stdlib modules)
+SxValue* sx_alloc(SxType type);
+char* sx_strdup(const char *s);
+
+#ifdef SX_USE_GC
+#include <gc.h>
+#define SX_MALLOC(size) GC_MALLOC(size)
+#define SX_REALLOC(ptr, size) GC_REALLOC(ptr, size)
+#define SX_FREE(ptr)
+#else
+#define SX_MALLOC(size) malloc(size)
+#define SX_REALLOC(ptr, size) realloc(ptr, size)
+#define SX_FREE(ptr) free(ptr)
+#endif
 
 // Constructors
 SxValue* sx_number(double n);
@@ -58,6 +79,15 @@ SxValue* sx_bool(int b);
 SxValue* sx_null(void);
 SxValue* sx_list_new(void);
 SxValue* sx_dict_new(void);
+SxValue* sx_function(SxFnPtr fn);
+SxValue* sx_error_new(const char *msg);
+
+// Function calls
+SxValue* sx_call(SxValue *fn, SxValue **args, int argc);
+SxValue* sx_is_error(SxValue *v);
+
+// Method dispatch
+SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc);
 
 // Arithmetic
 SxValue* sx_add(SxValue *a, SxValue *b);

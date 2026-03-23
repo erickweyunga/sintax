@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/erickweyunga/sintax/preprocessor"
@@ -127,13 +128,10 @@ func (cg *CodeGen) compileMultiplication(mul *parser.Multiplication) llvmValue.V
 
 func (cg *CodeGen) compileUnary(u *parser.Unary) llvmValue.Value {
 	if u.Not != nil {
-		val := cg.compileUnary(u.Not)
-		return cg.callRT("sx_not", val)
+		return cg.callRT("sx_not", cg.compileUnary(u.Not))
 	}
 	if u.Neg != nil {
-		val := cg.compileUnary(u.Neg)
-		zero := cg.callRT("sx_number", constant.NewFloat(types.Double, 0))
-		return cg.callRT("sx_sub", zero, val)
+		return cg.callRT("sx_sub", cg.callRT("sx_number", constant.NewFloat(types.Double, 0)), cg.compileUnary(u.Neg))
 	}
 	if u.Pos != nil {
 		return cg.compileUnary(u.Pos)
@@ -142,13 +140,17 @@ func (cg *CodeGen) compileUnary(u *parser.Unary) llvmValue.Value {
 }
 
 func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
+	var result llvmValue.Value
+
 	switch {
+	case p.Lambda != nil:
+		result = cg.compileLambda(p.Lambda)
 	case p.IndexAccess != nil:
 		collection := cg.getVar(p.IndexAccess.Name)
 		idx := cg.compileExpr(p.IndexAccess.Index)
-		return cg.callRT("sx_index", collection, idx)
+		result = cg.callRT("sx_index", collection, idx)
 	case p.FuncCall != nil:
-		return cg.compileFuncCall(p.FuncCall)
+		result = cg.compileFuncCall(p.FuncCall)
 	case p.DictLit != nil:
 		dict := cg.callRT("sx_dict_new")
 		for _, entry := range p.DictLit.Entries {
@@ -156,42 +158,119 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 			val := cg.compileExpr(entry.Value)
 			cg.callRTVoid("sx_index_set", dict, key, val)
 		}
-		return dict
+		result = dict
 	case p.ListLit != nil:
 		list := cg.callRT("sx_list_new")
 		for _, el := range p.ListLit.Elements {
 			val := cg.compileExpr(el)
 			cg.callRTVoid("sx_list_append", list, val)
 		}
-		return list
+		result = list
 	case p.Number != nil:
-		return cg.callRT("sx_number", constant.NewFloat(types.Double, *p.Number))
+		result = cg.callRT("sx_number", constant.NewFloat(types.Double, *p.Number))
 	case p.String != nil:
 		s := (*p.String)[1 : len(*p.String)-1]
 		s = preprocessor.ProcessEscapes(s)
 		if strings.Contains(s, "{") && strings.Contains(s, "}") {
-			return cg.compileInterpolatedString(s)
+			result = cg.compileInterpolatedString(s)
+		} else {
+			result = cg.callRT("sx_string", cg.globalString(s))
 		}
-		str := cg.globalString(s)
-		return cg.callRT("sx_string", str)
 	case p.Ident != nil:
 		switch *p.Ident {
 		case "true":
-			return cg.callRT("sx_bool", constant.NewInt(i32, 1))
+			result = cg.callRT("sx_bool", constant.NewInt(i32, 1))
 		case "false":
-			return cg.callRT("sx_bool", constant.NewInt(i32, 0))
+			result = cg.callRT("sx_bool", constant.NewInt(i32, 0))
 		case "null":
-			return cg.callRT("sx_null")
+			result = cg.callRT("sx_null")
 		default:
-			return cg.getVar(*p.Ident)
+			result = cg.getVar(*p.Ident)
 		}
 	case p.SubExpr != nil:
-		return cg.compileExpr(p.SubExpr)
+		result = cg.compileExpr(p.SubExpr)
+	default:
+		result = cg.callRT("sx_null")
 	}
-	return cg.callRT("sx_null")
+
+	// Method chain: value.method(args).method(args)...
+	for _, mc := range p.Methods {
+		nameStr := cg.globalString(mc.Name)
+		if len(mc.Args) == 0 {
+			result = cg.callRT("sx_method", result, nameStr, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
+		} else {
+			// Compile args and pass first arg pointer
+			arg0 := cg.compileExpr(mc.Args[0])
+			argPtr := cg.block.NewAlloca(sxValuePtr)
+			cg.block.NewStore(arg0, argPtr)
+			result = cg.callRT("sx_method", result, nameStr, argPtr, constant.NewInt(i32, int64(len(mc.Args))))
+		}
+	}
+
+	return result
 }
 
-// Builtin mappings: Sintax name → C runtime name
+// Stdlib mappings (preprocessor rewrites math/sqrt → math__sqrt)
+var stdlibOneArg = map[string]string{
+	"math__sqrt":  "sx_math_sqrt",
+	"math__abs":   "sx_math_abs",
+	"math__floor": "sx_math_floor",
+	"math__ceil":  "sx_math_ceil",
+	"math__round": "sx_math_round",
+	"math__sin":   "sx_math_sin",
+	"math__cos":   "sx_math_cos",
+	"math__tan":   "sx_math_tan",
+	"math__asin":  "sx_math_asin",
+	"math__acos":  "sx_math_acos",
+	"math__atan":  "sx_math_atan",
+	"math__log":   "sx_math_log",
+	"math__log2":  "sx_math_log2",
+	"math__log10": "sx_math_log10",
+	"math__exp":   "sx_math_exp",
+	"math__cbrt":  "sx_math_cbrt",
+	"math__sign":  "sx_math_sign",
+}
+
+var stdlibNoArg = map[string]string{
+	"math__pi":     "sx_math_pi",
+	"math__e":      "sx_math_e",
+	"math__random": "sx_math_random",
+}
+
+var stdlibTwoArg = map[string]string{
+	"math__pow":            "sx_math_pow",
+	"math__min":            "sx_math_min",
+	"math__max":            "sx_math_max",
+	"math__random_between": "sx_math_random_between",
+	// String two-arg
+	"string__split":       "sx_string_split",
+	"string__contains":    "sx_string_contains",
+	"string__starts_with": "sx_string_starts_with",
+	"string__ends_with":   "sx_string_ends_with",
+	"string__join":        "sx_string_join",
+}
+
+var stdlibThreeArg = map[string]string{
+	"string__replace": "sx_string_replace",
+	"os__write":       "sx_os_write",
+}
+
+func init() {
+	// String one-arg
+	stdlibOneArg["string__upper"] = "sx_string_upper"
+	stdlibOneArg["string__lower"] = "sx_string_lower"
+	stdlibOneArg["string__trim"] = "sx_string_trim"
+	// OS one-arg
+	stdlibOneArg["os__read"] = "sx_os_read"
+	stdlibOneArg["os__exists"] = "sx_os_exists"
+	stdlibOneArg["os__delete"] = "sx_os_delete"
+	stdlibOneArg["os__getenv"] = "sx_os_getenv"
+	stdlibOneArg["os__exec"] = "sx_os_exec"
+	// OS no-arg
+	stdlibNoArg["os__cwd"] = "sx_os_cwd"
+}
+
+// Builtin mappings
 var oneArgBuiltins = map[string]string{
 	"type":   "sx_type",
 	"len":    "sx_len",
@@ -200,6 +279,8 @@ var oneArgBuiltins = map[string]string{
 	"num":    "sx_to_number",
 	"str":    "sx_to_string",
 	"bool":   "sx_to_bool",
+	"err":    "sx_is_error",
+	"error":  "sx_error_new",
 }
 
 var twoArgBuiltins = map[string]string{
@@ -208,17 +289,17 @@ var twoArgBuiltins = map[string]string{
 }
 
 func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
-	// Single-arg builtins (name → runtime)
+	// Single-arg builtins
 	if rtName, ok := oneArgBuiltins[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]))
 	}
 
-	// Two-arg builtins (name → runtime)
+	// Two-arg builtins
 	if rtName, ok := twoArgBuiltins[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	}
 
-	// Special builtins (variable args or custom logic)
+	// Special builtins
 	switch fc.Name {
 	case "print":
 		return cg.compilePrint(fc)
@@ -236,6 +317,23 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 			return cg.callRT("sx_input", cg.compileExpr(fc.Args[0]))
 		}
 		return cg.callRT("sx_input", cg.callRT("sx_null"))
+	case "try":
+		// try(expr) — compile the expression, if it's a function call wrap with sx_try
+		return cg.compileExpr(fc.Args[0]) // simplified: no error catching in compiled mode yet
+	}
+
+	// Stdlib: no-arg, one-arg, two-arg
+	if rtName, ok := stdlibNoArg[fc.Name]; ok {
+		return cg.callRT(rtName)
+	}
+	if rtName, ok := stdlibOneArg[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]))
+	}
+	if rtName, ok := stdlibTwoArg[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
+	}
+	if rtName, ok := stdlibThreeArg[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]))
 	}
 
 	// User-defined function
@@ -247,7 +345,17 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.block.NewCall(fn, args...)
 	}
 
-	return cg.callRT("sx_null")
+	// Variable that might be a lambda/function value
+	val := cg.getVar(fc.Name)
+	// Compile args into an array
+	if len(fc.Args) > 0 {
+		argArray := cg.block.NewAlloca(sxValuePtr)
+		// For single arg
+		arg0 := cg.compileExpr(fc.Args[0])
+		cg.block.NewStore(arg0, argArray)
+		return cg.callRT("sx_call", val, argArray, constant.NewInt(i32, int64(len(fc.Args))))
+	}
+	return cg.callRT("sx_call", val, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
 }
 
 func (cg *CodeGen) compilePrint(fc *parser.FuncCall) llvmValue.Value {
@@ -306,4 +414,50 @@ func (cg *CodeGen) compileInterpolatedString(s string) llvmValue.Value {
 		result = cg.callRT("sx_add", result, part)
 	}
 	return result
+}
+
+func (cg *CodeGen) compileLambda(l *parser.Lambda) llvmValue.Value {
+	cg.lambdaCounter++
+	fnName := fmt.Sprintf("sx_lambda_%d", cg.lambdaCounter)
+
+	prevFn := cg.fn
+	prevBlock := cg.block
+	prevVars := cg.vars
+	prevScopes := cg.scopes
+
+	// Lambda uses SxFnPtr signature: SxValue* fn(SxValue** args, int argc)
+	argsPtrType := types.NewPointer(sxValuePtr)
+	fn := cg.mod.NewFunc(fnName, sxValuePtr,
+		ir.NewParam("args", argsPtrType),
+		ir.NewParam("argc", i32),
+	)
+
+	entry := fn.NewBlock("entry")
+	cg.fn = fn
+	cg.block = entry
+	cg.vars = make(map[string]*ir.InstAlloca)
+	cg.scopes = []map[string]*ir.InstAlloca{}
+	cg.pushScope()
+
+	// Extract params from args array
+	for i, name := range l.Params {
+		argPtr := entry.NewGetElementPtr(sxValuePtr, fn.Params[0], constant.NewInt(i32, int64(i)))
+		argVal := entry.NewLoad(sxValuePtr, argPtr)
+		alloca := entry.NewAlloca(sxValuePtr)
+		entry.NewStore(argVal, alloca)
+		cg.scopes[len(cg.scopes)-1][name] = alloca
+	}
+
+	bodyResult := cg.compileExpr(l.Body)
+	cg.block.NewRet(bodyResult)
+
+	cg.popScope()
+	cg.fn = prevFn
+	cg.block = prevBlock
+	cg.vars = prevVars
+	cg.scopes = prevScopes
+
+	// Cast to i8* and wrap as SxValue function
+	fnPtr := cg.block.NewBitCast(fn, sxValuePtr)
+	return cg.callRT("sx_function", fnPtr)
 }

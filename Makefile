@@ -19,8 +19,7 @@ compile: build
 ## install: Install sintax + runtime to ~/.sintax/
 install: build
 	@mkdir -p $(SINTAX_HOME)/runtime
-	@cp runtime/runtime.c $(SINTAX_HOME)/runtime/
-	@cp runtime/runtime.h $(SINTAX_HOME)/runtime/
+	@cp runtime/*.c runtime/*.h $(SINTAX_HOME)/runtime/
 	@cp $(APP_NAME) $(SINTAX_HOME)/$(APP_NAME)
 	@echo "Installed to $(SINTAX_HOME)/"
 	@echo "Add to PATH: export PATH=\$$PATH:$(SINTAX_HOME)"

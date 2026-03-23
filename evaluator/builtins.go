@@ -33,6 +33,7 @@ func init() {
 		"str":    builtinStr,
 		"bool":   builtinBool,
 		"err":    builtinErr,
+		"error":  builtinError,
 	}
 }
 
@@ -276,4 +277,13 @@ func builtinErr(args []*parser.Expr, env *Environment) object.Object {
 	val := evalExpr(args[0], env)
 	_, isErr := val.(*object.ErrorObj)
 	return &object.BoolObj{Value: isErr}
+}
+
+// error — create an error value
+func builtinError(args []*parser.Expr, env *Environment) object.Object {
+	if len(args) != 1 {
+		runtimeError("error() requires 1 argument")
+	}
+	val := evalExpr(args[0], env)
+	return &object.ErrorObj{Message: val.Inspect()}
 }

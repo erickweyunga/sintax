@@ -4,28 +4,18 @@
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>
-
-#ifdef SX_USE_GC
-#include <gc.h>
-#define SX_MALLOC(size) GC_MALLOC(size)
-#define SX_REALLOC(ptr, size) GC_REALLOC(ptr, size)
-#define SX_FREE(ptr) /* GC handles it */
-#else
-#define SX_MALLOC(size) malloc(size)
-#define SX_REALLOC(ptr, size) realloc(ptr, size)
-#define SX_FREE(ptr) free(ptr)
-#endif
+#include <ctype.h>
 
 // --- Memory helpers ---
 
-static SxValue* sx_alloc(SxType type) {
+SxValue* sx_alloc(SxType type) {
     SxValue *v = (SxValue*)SX_MALLOC(sizeof(SxValue));
     if (!v) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     v->type = type;
     return v;
 }
 
-static char* sx_strdup(const char *s) {
+char* sx_strdup(const char *s) {
     size_t len = strlen(s);
     char *dup = (char*)SX_MALLOC(len + 1);
     if (!dup) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
@@ -148,11 +138,182 @@ static void sx_dict_add_key(SxDict *d, const char *key) {
     d->keys[d->len] = sx_strdup(key);
 }
 
-// --- Error ---
+// --- Function / Error constructors ---
+
+SxValue* sx_function(SxFnPtr fn) {
+    SxValue *v = sx_alloc(SX_FUNCTION);
+    v->function = fn;
+    return v;
+}
+
+SxValue* sx_error_new(const char *msg) {
+    SxValue *v = sx_alloc(SX_ERROR);
+    v->string = sx_strdup(msg);
+    return v;
+}
+
+SxValue* sx_is_error(SxValue *v) {
+    return sx_bool(v && v->type == SX_ERROR);
+}
+
+SxValue* sx_call(SxValue *fn, SxValue **args, int argc) {
+    if (!fn || fn->type != SX_FUNCTION) {
+        sx_error("Not a function");
+    }
+    return fn->function(args, argc);
+}
 
 void sx_error(const char *msg) {
     fprintf(stderr, "Error: %s\n", msg);
     exit(1);
+}
+
+// --- Method dispatch ---
+
+SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
+    // String methods
+    if (obj->type == SX_STRING) {
+        if (strcmp(name, "len") == 0) return sx_number(strlen(obj->string));
+        if (strcmp(name, "upper") == 0) {
+            char *s = sx_strdup(obj->string);
+            for (int i = 0; s[i]; i++) s[i] = toupper(s[i]);
+            SxValue *v = sx_alloc(SX_STRING); v->string = s; return v;
+        }
+        if (strcmp(name, "lower") == 0) {
+            char *s = sx_strdup(obj->string);
+            for (int i = 0; s[i]; i++) s[i] = tolower(s[i]);
+            SxValue *v = sx_alloc(SX_STRING); v->string = s; return v;
+        }
+        if (strcmp(name, "trim") == 0) {
+            char *s = obj->string;
+            while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+            char *end = s + strlen(s) - 1;
+            while (end > s && (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r')) end--;
+            int len = end - s + 1;
+            char *result = (char*)SX_MALLOC(len + 1);
+            memcpy(result, s, len);
+            result[len] = '\0';
+            SxValue *v = sx_alloc(SX_STRING); v->string = result; return v;
+        }
+        if (strcmp(name, "contains") == 0 && argc == 1) {
+            return sx_bool(strstr(obj->string, args[0]->string) != NULL);
+        }
+        if (strcmp(name, "split") == 0 && argc == 1) {
+            SxValue *list = sx_list_new();
+            char *s = sx_strdup(obj->string);
+            char *sep = args[0]->string;
+            int sep_len = strlen(sep);
+            char *start = s;
+            char *found;
+            while ((found = strstr(start, sep)) != NULL) {
+                *found = '\0';
+                sx_list_append(list, sx_string(start));
+                start = found + sep_len;
+            }
+            sx_list_append(list, sx_string(start));
+            return list;
+        }
+        if (strcmp(name, "replace") == 0 && argc == 2) {
+            return sx_string(obj->string); // simplified — full replace needs more code
+        }
+        if (strcmp(name, "type") == 0) return sx_string("str");
+    }
+
+    // List methods
+    if (obj->type == SX_LIST) {
+        if (strcmp(name, "len") == 0) return sx_number(obj->list.len);
+        if (strcmp(name, "push") == 0 && argc == 1) { sx_list_append(obj, args[0]); return obj; }
+        if (strcmp(name, "pop") == 0 && argc == 1) { return sx_list_remove(obj, args[0]); }
+        if (strcmp(name, "contains") == 0 && argc == 1) {
+            for (int i = 0; i < obj->list.len; i++) {
+                SxValue *eq = sx_eq(args[0], obj->list.items[i]);
+                if (eq->boolean) return sx_bool(1);
+            }
+            return sx_bool(0);
+        }
+        if (strcmp(name, "reverse") == 0) {
+            SxValue *list = sx_list_new();
+            for (int i = obj->list.len - 1; i >= 0; i--)
+                sx_list_append(list, obj->list.items[i]);
+            return list;
+        }
+        if (strcmp(name, "join") == 0 && argc == 1) {
+            char *sep = args[0]->string;
+            int total = 0;
+            for (int i = 0; i < obj->list.len; i++) {
+                SxValue *s = sx_to_string(obj->list.items[i]);
+                total += strlen(s->string);
+                if (i > 0) total += strlen(sep);
+            }
+            char *result = (char*)SX_MALLOC(total + 1);
+            result[0] = '\0';
+            int offset = 0;
+            for (int i = 0; i < obj->list.len; i++) {
+                if (i > 0) { memcpy(result + offset, sep, strlen(sep)); offset += strlen(sep); }
+                SxValue *s = sx_to_string(obj->list.items[i]);
+                int len = strlen(s->string);
+                memcpy(result + offset, s->string, len);
+                offset += len;
+            }
+            result[offset] = '\0';
+            SxValue *v = sx_alloc(SX_STRING); v->string = result; return v;
+        }
+        if (strcmp(name, "map") == 0 && argc == 1 && args[0]->type == SX_FUNCTION) {
+            SxValue *list = sx_list_new();
+            for (int i = 0; i < obj->list.len; i++) {
+                SxValue *item = obj->list.items[i];
+                sx_list_append(list, args[0]->function(&item, 1));
+            }
+            return list;
+        }
+        if (strcmp(name, "filter") == 0 && argc == 1 && args[0]->type == SX_FUNCTION) {
+            SxValue *list = sx_list_new();
+            for (int i = 0; i < obj->list.len; i++) {
+                SxValue *item = obj->list.items[i];
+                if (sx_truthy(args[0]->function(&item, 1)))
+                    sx_list_append(list, item);
+            }
+            return list;
+        }
+        if (strcmp(name, "reduce") == 0 && argc == 2 && args[0]->type == SX_FUNCTION) {
+            SxValue *acc = args[1];
+            for (int i = 0; i < obj->list.len; i++) {
+                SxValue *pair[2] = {acc, obj->list.items[i]};
+                acc = args[0]->function(pair, 2);
+            }
+            return acc;
+        }
+        if (strcmp(name, "each") == 0 && argc == 1 && args[0]->type == SX_FUNCTION) {
+            for (int i = 0; i < obj->list.len; i++) {
+                SxValue *item = obj->list.items[i];
+                args[0]->function(&item, 1);
+            }
+            return sx_null();
+        }
+        if (strcmp(name, "type") == 0) return sx_string("list");
+    }
+
+    // Dict methods
+    if (obj->type == SX_DICT) {
+        if (strcmp(name, "len") == 0) return sx_number(obj->dict.len);
+        if (strcmp(name, "keys") == 0) return sx_dict_keys(obj);
+        if (strcmp(name, "values") == 0) return sx_dict_values(obj);
+        if (strcmp(name, "has") == 0 && argc == 1) return sx_dict_has(obj, args[0]);
+        if (strcmp(name, "type") == 0) return sx_string("dict");
+    }
+
+    // Num methods
+    if (obj->type == SX_NUMBER) {
+        if (strcmp(name, "type") == 0) return sx_string("num");
+    }
+    if (obj->type == SX_BOOL) {
+        if (strcmp(name, "type") == 0) return sx_string("bool");
+    }
+
+    char msg[256];
+    snprintf(msg, sizeof(msg), "'%s' has no method '%s'", sx_type(obj)->string, name);
+    sx_error(msg);
+    return sx_null();
 }
 
 // --- Truthy ---
@@ -314,6 +475,8 @@ static void sx_print_value(SxValue *v, int quote_strings) {
             }
             printf("}");
             break;
+        case SX_FUNCTION: printf("<fn>"); break;
+        case SX_ERROR: printf("error: %s", v->string); break;
     }
 }
 
@@ -503,6 +666,8 @@ SxValue* sx_type(SxValue *v) {
         case SX_LIST: return sx_string("list");
         case SX_DICT: return sx_string("dict");
         case SX_NULL: return sx_string("null");
+        case SX_FUNCTION: return sx_string("fn");
+        case SX_ERROR: return sx_string("error");
         default: return sx_string("unknown");
     }
 }

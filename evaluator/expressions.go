@@ -9,20 +9,6 @@ import (
 	"github.com/erickweyunga/sintax/preprocessor"
 )
 
-// evalTry evaluates an expression, catching any runtime errors.
-func evalTry(expr *parser.Expr, env *Environment) (result object.Object) {
-	defer func() {
-		if r := recover(); r != nil {
-			if re, ok := r.(RuntimeError); ok {
-				result = &object.ErrorObj{Message: re.Message}
-			} else {
-				panic(r)
-			}
-		}
-	}()
-	return evalExpr(expr, env)
-}
-
 func evalExpr(expr *parser.Expr, env *Environment) object.Object {
 	result := evalLogicalAnd(expr.Left, env)
 	for _, op := range expr.Ops {
@@ -244,13 +230,6 @@ func interpolateString(s string, env *Environment) string {
 }
 
 func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
-	if fc.Name == "try" {
-		if len(fc.Args) != 1 {
-			runtimeError("try() requires 1 argument")
-		}
-		return evalTry(fc.Args[0], env)
-	}
-
 	if fn, ok := builtins[fc.Name]; ok {
 		return fn(fc.Args, env)
 	}

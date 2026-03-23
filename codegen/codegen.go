@@ -33,6 +33,7 @@ type CodeGen struct {
 	loopExitBlocks     []*ir.Block
 	loopContinueBlocks []*ir.Block
 	blockCounter       int
+	lambdaCounter      int
 }
 
 // New creates a new code generator.
@@ -52,6 +53,14 @@ func New() *CodeGen {
 
 // Generate compiles a program to LLVM IR.
 func (cg *CodeGen) Generate(program *parser.Program) string {
+	// Pass 1: Forward-declare top-level functions so mutual recursion works
+	for _, stmt := range program.Statements {
+		if stmt.FuncDef != nil {
+			cg.forwardDeclare(stmt.FuncDef)
+		}
+	}
+
+	// Pass 2: Compile everything
 	mainFn := cg.mod.NewFunc("main", i32)
 	entry := mainFn.NewBlock("entry")
 	cg.fn = mainFn
@@ -123,6 +132,57 @@ var runtimeDecls = []rtDecl{
 	{"sx_to_string", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_to_bool", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_check_type", voidType, []types.Type{sxValuePtr, i32, sxValuePtr}},
+	{"sx_error", voidType, []types.Type{sxValuePtr}},
+	// Stdlib math (one-arg)
+	{"sx_math_sqrt", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_abs", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_floor", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_ceil", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_round", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_sin", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_cos", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_tan", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_asin", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_acos", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_atan", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_log", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_log2", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_log10", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_exp", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_cbrt", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_math_sign", sxValuePtr, []types.Type{sxValuePtr}},
+	// Stdlib math (no-arg)
+	{"sx_math_pi", sxValuePtr, nil},
+	{"sx_math_e", sxValuePtr, nil},
+	{"sx_math_random", sxValuePtr, nil},
+	// Stdlib math (two-arg)
+	{"sx_math_pow", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_math_min", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_math_max", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_math_random_between", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	// Stdlib string
+	{"sx_string_upper", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_string_lower", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_string_trim", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_string_split", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_string_replace", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
+	{"sx_string_contains", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_string_starts_with", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_string_ends_with", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_string_join", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	// Stdlib os
+	{"sx_os_read", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_os_write", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_os_exists", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_os_delete", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_os_cwd", sxValuePtr, nil},
+	{"sx_os_getenv", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_os_exec", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_function", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_error_new", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_call", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, i32}},
+	{"sx_is_error", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_method", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr, i32}},
 }
 
 func (cg *CodeGen) declareRuntime() {
@@ -234,6 +294,23 @@ var typeTagMap = map[string]int{
 	"bool": 3, // SX_BOOL
 	"list": 4, // SX_LIST
 	"dict": 5, // SX_DICT
+}
+
+func (cg *CodeGen) forwardDeclare(fd *parser.FuncDef) {
+	if _, exists := cg.userFuncs[fd.Name]; exists {
+		return
+	}
+	params := make([]*ir.Param, len(fd.Params))
+	for i, p := range fd.Params {
+		params[i] = ir.NewParam(p.Name, sxValuePtr)
+	}
+	fn := cg.mod.NewFunc("sx_user_"+fd.Name, sxValuePtr, params...)
+	cg.userFuncs[fd.Name] = fn
+}
+
+func (cg *CodeGen) emitError(msg string) {
+	str := cg.globalString(msg)
+	cg.callRTVoid("sx_error", str)
 }
 
 func typeNameToTag(name string) int {

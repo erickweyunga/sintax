@@ -95,6 +95,6 @@ fn (str name) str greet:
 -- test: not ("z" in ["a", "b", "c"])
 -- test: "hello" in "hello world"
 
--- test: err(try(1 / 0))
--- test: not err(try(1 + 1))
--- test: try(5 + 3) == 8
+-- test: err(error("test")) == true
+-- test: not err(42)
+-- test: type(error("oops")) == "error"

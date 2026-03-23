@@ -153,16 +153,17 @@ fn (x) categorize:
 -- test: categorize(2) == "two"
 -- test: categorize(99) == "other"
 
--- test: try_safe() == 0
-fn () try_safe:
-    result = try(1 / 0)
+-- test: error_handling() == 0
+fn () error_handling:
+    result = error("something failed")
     if err(result):
         return 0
-    return result
+    return 1
 
--- test: try_ok() == 8
-fn () try_ok:
-    return try(5 + 3)
+-- test: error_msg() == "error: oops"
+fn () error_msg:
+    e = error("oops")
+    return str(e)
 
 -- test: compound_all() == 10
 fn () compound_all:
