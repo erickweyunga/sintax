@@ -30,14 +30,14 @@ type Statement struct {
 //   unda (a, b) jumla:
 type FuncDef struct {
 	Params     []*Param `"unda" "(" ( @@ ( "," @@ )* )? ")"`
-	ReturnType *string  `@( "nambari" | "tungo" | "buliani" | "safu" | "kamusi" )?`
+	ReturnType *string  `@( "nambari" | "namba" | "tungo" | "buliani" | "bul" | "safu" | "kamusi" )?`
 	Name       string   `@Ident`
 	Body       *Block   `@@`
 }
 
 // Param is a function parameter, optionally typed.
 type Param struct {
-	Type *string `( @( "nambari" | "tungo" | "buliani" | "safu" | "kamusi" )`
+	Type *string `( @( "nambari" | "namba" | "tungo" | "buliani" | "bul" | "safu" | "kamusi" )`
 	Name string  `  @Ident | @Ident )`
 }
 
@@ -91,7 +91,7 @@ type ReturnStmt struct {
 
 // TypedAssign: type name = value; (e.g. nambari x = 5;)
 type TypedAssign struct {
-	Type  string `@( "nambari" | "tungo" | "buliani" | "safu" | "kamusi" )`
+	Type  string `@( "nambari" | "namba" | "tungo" | "buliani" | "bul" | "safu" | "kamusi" )`
 	Name  string `@Ident "="`
 	Value *Expr  `@@ ";"`
 }

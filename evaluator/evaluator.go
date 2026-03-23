@@ -139,13 +139,13 @@ func evalFuncDef(fd *parser.FuncDef, env *Environment) object.Object {
 	for i, p := range fd.Params {
 		typ := ""
 		if p.Type != nil {
-			typ = *p.Type
+			typ = object.NormalizeType(*p.Type)
 		}
 		params[i] = object.FuncParam{Name: p.Name, Type: typ}
 	}
 	retType := ""
 	if fd.ReturnType != nil {
-		retType = *fd.ReturnType
+		retType = object.NormalizeType(*fd.ReturnType)
 	}
 	fn := &object.FuncObj{
 		Name:       fd.Name,
@@ -310,11 +310,12 @@ func evalCompoundAssign(ca *parser.CompoundAssign, env *Environment) object.Obje
 
 func evalTypedAssign(ta *parser.TypedAssign, env *Environment) object.Object {
 	val := evalExpr(ta.Value, env)
+	expectedType := object.NormalizeType(ta.Type)
 	valType := object.TypeName(val)
-	if valType != ta.Type {
-		runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", ta.Name, valType, ta.Type)
+	if valType != expectedType {
+		runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", ta.Name, valType, expectedType)
 	}
-	env.SetTyped(ta.Name, ta.Type, val)
+	env.SetTyped(ta.Name, expectedType, val)
 	return val
 }
 

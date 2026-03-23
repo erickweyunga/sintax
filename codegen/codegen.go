@@ -854,11 +854,11 @@ func (cg *CodeGen) newBlock(prefix string) *ir.Block {
 
 func typeNameToTag(name string) int {
 	switch name {
-	case "nambari":
+	case "nambari", "namba":
 		return 1 // SX_NUMBER
 	case "tungo":
 		return 2 // SX_STRING
-	case "buliani":
+	case "buliani", "bul":
 		return 3 // SX_BOOL
 	case "safu":
 		return 4 // SX_LIST

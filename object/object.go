@@ -172,6 +172,18 @@ func ObjectsEqual(a, b Object) bool {
 	return false
 }
 
+// NormalizeType maps short aliases to canonical type names.
+func NormalizeType(t string) string {
+	switch t {
+	case "namba":
+		return "nambari"
+	case "bul":
+		return "buliani"
+	default:
+		return t
+	}
+}
+
 // Null is a singleton null value to avoid repeated allocations.
 var Null = &NullObj{}
 

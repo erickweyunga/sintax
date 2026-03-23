@@ -30,8 +30,10 @@ func init() {
 		"thamani": builtinThamani,
 		"ina":     builtinIna,
 		"nambari": builtinNambari,
+		"namba":   builtinNambari,
 		"tungo":   builtinTungo,
 		"buliani": builtinBuliani,
+		"bul":     builtinBuliani,
 	}
 }
 
