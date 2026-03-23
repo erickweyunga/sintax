@@ -78,45 +78,25 @@ foundGC:
 }
 
 func findRuntime() string {
-	candidates := []string{}
+	paths := []string{
+		SintaxRuntime(), // ~/.sintax/runtime/runtime.c
+		"runtime/runtime.c",
+		"../runtime/runtime.c",
+	}
 
-	// Relative to executable (handles symlinks)
-	exe, err := os.Executable()
-	if err == nil {
-		real, err := filepath.EvalSymlinks(exe)
-		if err == nil {
+	// Also check relative to executable
+	if exe, err := os.Executable(); err == nil {
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = real
 		}
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, "runtime", "runtime.c"),
-			filepath.Join(exeDir, "..", "runtime", "runtime.c"),
+		dir := filepath.Dir(exe)
+		paths = append(paths,
+			filepath.Join(dir, "runtime", "runtime.c"),
+			filepath.Join(dir, "..", "runtime", "runtime.c"),
 		)
 	}
 
-	// Relative to working directory (and parent)
-	candidates = append(candidates,
-		"runtime/runtime.c",
-		"../runtime/runtime.c",
-	)
-
-	// GOPATH
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		home, _ := os.UserHomeDir()
-		gopath = filepath.Join(home, "go")
-	}
-	candidates = append(candidates,
-		filepath.Join(gopath, "src", "github.com", "erickweyunga", "sintax", "runtime", "runtime.c"),
-		filepath.Join(gopath, "pkg", "mod", "github.com", "erickweyunga", "sintax@*", "runtime", "runtime.c"),
-	)
-
-	for _, p := range candidates {
-		// Handle glob patterns
-		if matches, _ := filepath.Glob(p); len(matches) > 0 {
-			abs, _ := filepath.Abs(matches[0])
-			return abs
-		}
+	for _, p := range paths {
 		if _, err := os.Stat(p); err == nil {
 			abs, _ := filepath.Abs(p)
 			return abs
@@ -124,7 +104,7 @@ func findRuntime() string {
 	}
 
 	fmt.Fprintf(os.Stderr, "Error: Cannot find runtime.c\n")
-	fmt.Fprintf(os.Stderr, "Make sure you're in the sintax project directory or runtime.c is installed.\n")
+	fmt.Fprintf(os.Stderr, "Run 'make install' to set up ~/.sintax/\n")
 	os.Exit(1)
 	return ""
 }

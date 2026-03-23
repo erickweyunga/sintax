@@ -1,7 +1,8 @@
 APP_NAME = sintax
 GO = go
+SINTAX_HOME ?= $(HOME)/.sintax
 
-.PHONY: build run compile install clean test repl example help
+.PHONY: build run compile install uninstall clean test repl example help
 
 ## build: Build the sintax binary
 build:
@@ -15,9 +16,19 @@ run: build
 compile: build
 	./$(APP_NAME) build $(FILE)
 
-## install: Install sintax globally via go install
-install:
-	$(GO) install .
+## install: Install sintax + runtime to ~/.sintax/
+install: build
+	@mkdir -p $(SINTAX_HOME)/runtime
+	@cp runtime/runtime.c $(SINTAX_HOME)/runtime/
+	@cp runtime/runtime.h $(SINTAX_HOME)/runtime/
+	@cp $(APP_NAME) $(SINTAX_HOME)/$(APP_NAME)
+	@echo "Installed to $(SINTAX_HOME)/"
+	@echo "Add to PATH: export PATH=\$$PATH:$(SINTAX_HOME)"
+
+## uninstall: Remove ~/.sintax/
+uninstall:
+	@rm -rf $(SINTAX_HOME)
+	@echo "Removed $(SINTAX_HOME)/"
 
 ## repl: Launch the interactive REPL
 repl: build
@@ -38,6 +49,7 @@ test:
 ## clean: Remove build artifacts
 clean:
 	rm -f $(APP_NAME)
+	rm -rf .sintax/
 
 ## help: Show available commands
 help:
