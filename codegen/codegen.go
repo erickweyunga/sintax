@@ -274,13 +274,13 @@ func (cg *CodeGen) compileStatement(stmt *parser.Statement) {
 		cg.setVar(stmt.Assignment.Name, val)
 	case stmt.ExprStmt != nil:
 		// Check for break (0) and continue (1) in loop context
-		if cg.isBareLiteral(stmt.ExprStmt.Expr, 0) && len(cg.loopExitBlocks) > 0 {
+		if stmt.ExprStmt.Expr.IsBareLiteral(0) && len(cg.loopExitBlocks) > 0 {
 			cg.block.NewBr(cg.loopExitBlocks[len(cg.loopExitBlocks)-1])
 			// Create a dead block for subsequent statements
 			cg.block = cg.newBlock("after.break")
 			return
 		}
-		if cg.isBareLiteral(stmt.ExprStmt.Expr, 1) && len(cg.loopContinueBlocks) > 0 {
+		if stmt.ExprStmt.Expr.IsBareLiteral(1) && len(cg.loopContinueBlocks) > 0 {
 			cg.block.NewBr(cg.loopContinueBlocks[len(cg.loopContinueBlocks)-1])
 			cg.block = cg.newBlock("after.continue")
 			return
@@ -330,13 +330,6 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	cg.fn = prevFn
 	cg.block = prevBlock
 
-	// Store function pointer as a variable (for calling)
-	cg.vars["__fn_"+fd.Name] = nil // marker
-	// We'll handle function calls by name lookup in compileFuncCall
-	cg.setVar(fd.Name, constant.NewNull(sxValuePtr)) // placeholder
-	// Store the actual function reference
-	cg.vars["__fnref_"+fd.Name] = nil
-	_ = fn // keep reference
 }
 
 func (cg *CodeGen) compileIfStmt(ifStmt *parser.IfStmt) {
@@ -538,25 +531,29 @@ func (cg *CodeGen) compileCompoundAssign(ca *parser.CompoundAssign) {
 func (cg *CodeGen) compileExpr(expr *parser.Expr) llvmValue.Value {
 	left := cg.compileLogicalAnd(expr.Left)
 	for _, op := range expr.Ops {
-		// OR: short-circuit
-		right := cg.compileLogicalAnd(op.Right)
+		// OR: short-circuit — if left is truthy, skip right
 		leftTruthy := cg.callRT("sx_truthy", left)
 		cond := cg.block.NewICmp(enum.IPredNE, leftTruthy, constant.NewInt(i32, 0))
+		leftBlock := cg.block
 
-		thenBlock := cg.newBlock("or.left")
-		elseBlock := cg.newBlock("or.right")
+		thenBlock := cg.newBlock("or.true")
+		elseBlock := cg.newBlock("or.false")
 		mergeBlock := cg.newBlock("or.merge")
 
-		cg.block.NewCondBr(cond, thenBlock, elseBlock)
+		leftBlock.NewCondBr(cond, thenBlock, elseBlock)
 
+		// Left was truthy — use left
 		cg.block = thenBlock
-		cg.block.NewBr(mergeBlock)
+		thenBlock.NewBr(mergeBlock)
 
+		// Left was falsy — evaluate right
 		cg.block = elseBlock
-		cg.block.NewBr(mergeBlock)
+		right := cg.compileLogicalAnd(op.Right)
+		rightBlock := cg.block
+		rightBlock.NewBr(mergeBlock)
 
 		cg.block = mergeBlock
-		phi := cg.block.NewPhi(ir.NewIncoming(left, thenBlock), ir.NewIncoming(right, elseBlock))
+		phi := cg.block.NewPhi(ir.NewIncoming(left, thenBlock), ir.NewIncoming(right, rightBlock))
 		left = phi
 	}
 	return left
@@ -565,25 +562,29 @@ func (cg *CodeGen) compileExpr(expr *parser.Expr) llvmValue.Value {
 func (cg *CodeGen) compileLogicalAnd(and *parser.LogicalAnd) llvmValue.Value {
 	left := cg.compileComparison(and.Left)
 	for _, op := range and.Ops {
-		right := cg.compileComparison(op.Right)
+		// AND: short-circuit — if left is falsy, skip right
 		leftTruthy := cg.callRT("sx_truthy", left)
 		cond := cg.block.NewICmp(enum.IPredNE, leftTruthy, constant.NewInt(i32, 0))
+		leftBlock := cg.block
 
-		thenBlock := cg.newBlock("and.right")
+		thenBlock := cg.newBlock("and.true")
+		falseBlock := cg.newBlock("and.false")
 		mergeBlock := cg.newBlock("and.merge")
 
-		falseBlock := cg.newBlock("and.false")
+		leftBlock.NewCondBr(cond, thenBlock, falseBlock)
 
-		cg.block.NewCondBr(cond, thenBlock, falseBlock)
-
-		cg.block = falseBlock
-		cg.block.NewBr(mergeBlock)
-
+		// Left was truthy — evaluate right
 		cg.block = thenBlock
-		cg.block.NewBr(mergeBlock)
+		right := cg.compileComparison(op.Right)
+		rightBlock := cg.block
+		rightBlock.NewBr(mergeBlock)
+
+		// Left was falsy — use left
+		cg.block = falseBlock
+		falseBlock.NewBr(mergeBlock)
 
 		cg.block = mergeBlock
-		phi := cg.block.NewPhi(ir.NewIncoming(left, falseBlock), ir.NewIncoming(right, thenBlock))
+		phi := cg.block.NewPhi(ir.NewIncoming(right, rightBlock), ir.NewIncoming(left, falseBlock))
 		left = phi
 	}
 	return left
@@ -850,33 +851,6 @@ func (cg *CodeGen) newBlock(prefix string) *ir.Block {
 	return cg.fn.NewBlock(fmt.Sprintf("%s.%d", prefix, cg.blockCounter))
 }
 
-func (cg *CodeGen) isBareLiteral(expr *parser.Expr, val float64) bool {
-	if expr.Left == nil || len(expr.Ops) > 0 {
-		return false
-	}
-	and := expr.Left
-	if and.Left == nil || len(and.Ops) > 0 {
-		return false
-	}
-	cmp := and.Left
-	if cmp.Op != "" || cmp.Left == nil {
-		return false
-	}
-	add := cmp.Left
-	if len(add.Ops) > 0 || add.Left == nil {
-		return false
-	}
-	mul := add.Left
-	if len(mul.Ops) > 0 || mul.Left == nil {
-		return false
-	}
-	u := mul.Left
-	if u.Not != nil || u.Primary == nil {
-		return false
-	}
-	p := u.Primary
-	return p.Number != nil && *p.Number == val
-}
 
 func typeNameToTag(name string) int {
 	switch name {

@@ -123,15 +123,15 @@ func evalStatement(stmt *parser.Statement, env *Environment) object.Object {
 	case stmt.Assignment != nil:
 		return evalAssignment(stmt.Assignment, env)
 	case stmt.ExprStmt != nil:
-		if isBareLiteral(stmt.ExprStmt.Expr, 0) {
+		if stmt.ExprStmt.Expr.IsBareLiteral(0) {
 			return &object.BreakObj{}
 		}
-		if isBareLiteral(stmt.ExprStmt.Expr, 1) {
+		if stmt.ExprStmt.Expr.IsBareLiteral(1) {
 			return &object.ContinueObj{}
 		}
 		return evalExpr(stmt.ExprStmt.Expr, env)
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalFuncDef(fd *parser.FuncDef, env *Environment) object.Object {
@@ -160,12 +160,12 @@ func evalFuncDef(fd *parser.FuncDef, env *Environment) object.Object {
 
 func evalIfStmt(ifStmt *parser.IfStmt, env *Environment) object.Object {
 	cond := evalExpr(ifStmt.Condition, env)
-	if isTruthy(cond) {
+	if object.IsTruthy(cond) {
 		return evalStatements(ifStmt.Body.Statements, env)
 	} else if ifStmt.Else != nil {
 		return evalStatements(ifStmt.Else.Statements, env)
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalSwitchStmt(sw *parser.SwitchStmt, env *Environment) object.Object {
@@ -173,7 +173,7 @@ func evalSwitchStmt(sw *parser.SwitchStmt, env *Environment) object.Object {
 
 	for _, c := range sw.Cases {
 		caseVal := evalExpr(c.Value, env)
-		if objectsEqual(val, caseVal) {
+		if object.ObjectsEqual(val, caseVal) {
 			return evalStatements(c.Body.Statements, env)
 		}
 	}
@@ -181,32 +181,15 @@ func evalSwitchStmt(sw *parser.SwitchStmt, env *Environment) object.Object {
 	if sw.Default != nil {
 		return evalStatements(sw.Default.Statements, env)
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
-func objectsEqual(a, b object.Object) bool {
-	switch av := a.(type) {
-	case *object.NumberObj:
-		if bv, ok := b.(*object.NumberObj); ok {
-			return av.Value == bv.Value
-		}
-	case *object.StringObj:
-		if bv, ok := b.(*object.StringObj); ok {
-			return av.Value == bv.Value
-		}
-	case *object.BoolObj:
-		if bv, ok := b.(*object.BoolObj); ok {
-			return av.Value == bv.Value
-		}
-	}
-	return false
-}
 
 func evalWhileStmt(ws *parser.WhileStmt, env *Environment) object.Object {
-	var result object.Object = &object.NullObj{}
+	var result object.Object = object.Null
 	for {
 		cond := evalExpr(ws.Condition, env)
-		if !isTruthy(cond) {
+		if !object.IsTruthy(cond) {
 			break
 		}
 		result = evalStatements(ws.Body.Statements, env)
@@ -220,7 +203,7 @@ func evalWhileStmt(ws *parser.WhileStmt, env *Environment) object.Object {
 			return result
 		}
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalForStmt(fs *parser.ForStmt, env *Environment) object.Object {
@@ -242,7 +225,7 @@ func evalForStmt(fs *parser.ForStmt, env *Environment) object.Object {
 		runtimeError("'kwa' inahitaji safu, kamusi, au tungo")
 	}
 
-	var result object.Object = &object.NullObj{}
+	var result object.Object = object.Null
 	for _, item := range items {
 		env.Set(fs.Var, item)
 		result = evalStatements(fs.Body.Statements, env)
@@ -256,13 +239,13 @@ func evalForStmt(fs *parser.ForStmt, env *Environment) object.Object {
 			return result
 		}
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalPrintStmt(ps *parser.PrintStmt, env *Environment) object.Object {
 	val := evalExpr(ps.Value, env)
 	fmt.Println(val.Inspect())
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalReturnStmt(ret *parser.ReturnStmt, env *Environment) object.Object {
@@ -316,7 +299,7 @@ func evalCompoundAssign(ca *parser.CompoundAssign, env *Environment) object.Obje
 	result := evalArithOp(op, obj, right)
 	// Enforce type if typed
 	if typ, ok := env.GetType(ca.Name); ok && typ != "" {
-		valType := typeOf(result)
+		valType := object.TypeName(result)
 		if valType != typ {
 			runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", ca.Name, valType, typ)
 		}
@@ -327,7 +310,7 @@ func evalCompoundAssign(ca *parser.CompoundAssign, env *Environment) object.Obje
 
 func evalTypedAssign(ta *parser.TypedAssign, env *Environment) object.Object {
 	val := evalExpr(ta.Value, env)
-	valType := typeOf(val)
+	valType := object.TypeName(val)
 	if valType != ta.Type {
 		runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", ta.Name, valType, ta.Type)
 	}
@@ -339,7 +322,7 @@ func evalAssignment(assign *parser.Assignment, env *Environment) object.Object {
 	val := evalExpr(assign.Value, env)
 	// Enforce type if variable was declared with a type
 	if typ, ok := env.GetType(assign.Name); ok && typ != "" {
-		valType := typeOf(val)
+		valType := object.TypeName(val)
 		if valType != typ {
 			runtimeError("Aina si sahihi: '%s' ni %s, inahitaji %s", assign.Name, valType, typ)
 		}
@@ -354,7 +337,7 @@ func evalExpr(expr *parser.Expr, env *Environment) object.Object {
 	result := evalLogicalAnd(expr.Left, env)
 	for _, op := range expr.Ops {
 		// Short-circuit: if left is truthy, skip right
-		if isTruthy(result) {
+		if object.IsTruthy(result) {
 			return result
 		}
 		result = evalLogicalAnd(op.Right, env)
@@ -366,7 +349,7 @@ func evalLogicalAnd(and *parser.LogicalAnd, env *Environment) object.Object {
 	result := evalComparison(and.Left, env)
 	for _, op := range and.Ops {
 		// Short-circuit: if left is falsy, skip right
-		if !isTruthy(result) {
+		if !object.IsTruthy(result) {
 			return result
 		}
 		result = evalComparison(op.Right, env)
@@ -404,7 +387,7 @@ func evalMultiplication(mul *parser.Multiplication, env *Environment) object.Obj
 func evalUnary(u *parser.Unary, env *Environment) object.Object {
 	if u.Not != nil {
 		val := evalUnary(u.Not, env)
-		return &object.BoolObj{Value: !isTruthy(val)}
+		return &object.BoolObj{Value: !object.IsTruthy(val)}
 	}
 	return evalPrimary(u.Primary, env)
 }
@@ -435,7 +418,7 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 			return &object.BoolObj{Value: false}
 		}
 		if name == "tupu" {
-			return &object.NullObj{}
+			return object.Null
 		}
 		obj, ok := env.Get(name)
 		if !ok {
@@ -445,7 +428,7 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 	case p.SubExpr != nil:
 		return evalExpr(p.SubExpr, env)
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
@@ -464,7 +447,7 @@ func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 		}
 		val, exists := o.Pairs[key.Value]
 		if !exists {
-			return &object.NullObj{}
+			return object.Null
 		}
 		return val
 	case *object.ListObj:
@@ -490,7 +473,7 @@ func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 	default:
 		runtimeError("'%s' haiwezi kufikia kwa fahirisi", ia.Name)
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalDictLit(dl *parser.DictLit, env *Environment) object.Object {
@@ -580,7 +563,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		val := evalExpr(fc.Args[i], env)
 		// Enforce parameter type
 		if param.Type != "" {
-			valType := typeOf(val)
+			valType := object.TypeName(val)
 			if valType != param.Type {
 				runtimeError("Unda '%s' hoja '%s' ni %s, inahitaji %s", fn.Name, param.Name, valType, param.Type)
 			}
@@ -592,7 +575,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 	if ret, ok := result.(*object.ReturnObj); ok {
 		// Enforce return type
 		if fn.ReturnType != "" {
-			retType := typeOf(ret.Value)
+			retType := object.TypeName(ret.Value)
 			if retType != fn.ReturnType {
 				runtimeError("Unda '%s' rudisha %s, inahitaji %s", fn.Name, retType, fn.ReturnType)
 			}
@@ -601,7 +584,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 	}
 	// Enforce return type on implicit return
 	if fn.ReturnType != "" && result != nil {
-		retType := typeOf(result)
+		retType := object.TypeName(result)
 		if retType != fn.ReturnType {
 			runtimeError("Unda '%s' rudisha %s, inahitaji %s", fn.Name, retType, fn.ReturnType)
 		}
@@ -649,14 +632,14 @@ func evalComparisonOp(op string, left, right object.Object) object.Object {
 	}
 
 	runtimeError("Operesheni '%s' haiwezekani kwa aina hizi", op)
-	return &object.NullObj{}
+	return object.Null
 }
 
 func evalMembership(needle, haystack object.Object) object.Object {
 	switch h := haystack.(type) {
 	case *object.ListObj:
 		for _, el := range h.Elements {
-			if objectsEqual(needle, el) {
+			if object.ObjectsEqual(needle, el) {
 				return &object.BoolObj{Value: true}
 			}
 		}
@@ -716,73 +699,6 @@ func evalArithOp(op string, left, right object.Object) object.Object {
 		return &object.NumberObj{Value: math.Pow(ln.Value, rn.Value)}
 	}
 
-	return &object.NullObj{}
+	return object.Null
 }
 
-// isBareLiteral checks if an expression is just a bare number literal (e.g. 0 or 1).
-// This avoids false positives from computed expressions like x - x.
-func isBareLiteral(expr *parser.Expr, val float64) bool {
-	if expr.Left == nil || len(expr.Ops) > 0 {
-		return false
-	}
-	and := expr.Left
-	if and.Left == nil || len(and.Ops) > 0 {
-		return false
-	}
-	cmp := and.Left
-	if cmp.Op != "" || cmp.Left == nil {
-		return false
-	}
-	add := cmp.Left
-	if len(add.Ops) > 0 || add.Left == nil {
-		return false
-	}
-	mul := add.Left
-	if len(mul.Ops) > 0 || mul.Left == nil {
-		return false
-	}
-	u := mul.Left
-	if u.Not != nil || u.Primary == nil {
-		return false
-	}
-	p := u.Primary
-	return p.Number != nil && *p.Number == val
-}
-
-func typeOf(obj object.Object) string {
-	switch obj.(type) {
-	case *object.NumberObj:
-		return "nambari"
-	case *object.StringObj:
-		return "tungo"
-	case *object.BoolObj:
-		return "buliani"
-	case *object.ListObj:
-		return "safu"
-	case *object.DictObj:
-		return "kamusi"
-	case *object.FuncObj:
-		return "unda"
-	default:
-		return "tupu"
-	}
-}
-
-func isTruthy(obj object.Object) bool {
-	switch o := obj.(type) {
-	case *object.BoolObj:
-		return o.Value
-	case *object.NullObj:
-		return false
-	case *object.NumberObj:
-		return o.Value != 0
-	case *object.StringObj:
-		return o.Value != ""
-	case *object.ListObj:
-		return len(o.Elements) > 0
-	case *object.DictObj:
-		return len(o.Pairs) > 0
-	default:
-		return true
-	}
-}

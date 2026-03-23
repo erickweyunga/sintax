@@ -211,3 +211,32 @@ type DictEntry struct {
 type ListLit struct {
 	Elements []*Expr `"[" ( @@ ( "," @@ )* )? "]"`
 }
+
+// IsBareLiteral checks if an expression is just a bare number literal (e.g. 0 or 1).
+func (e *Expr) IsBareLiteral(val float64) bool {
+	if e.Left == nil || len(e.Ops) > 0 {
+		return false
+	}
+	and := e.Left
+	if and.Left == nil || len(and.Ops) > 0 {
+		return false
+	}
+	cmp := and.Left
+	if cmp.Op != "" || cmp.Left == nil {
+		return false
+	}
+	add := cmp.Left
+	if len(add.Ops) > 0 || add.Left == nil {
+		return false
+	}
+	mul := add.Left
+	if len(mul.Ops) > 0 || mul.Left == nil {
+		return false
+	}
+	u := mul.Left
+	if u.Not != nil || u.Primary == nil {
+		return false
+	}
+	p := u.Primary
+	return p.Number != nil && *p.Number == val
+}

@@ -110,28 +110,71 @@ type FuncObj struct {
 
 func (o *FuncObj) Inspect() string { return fmt.Sprintf("<unda %s>", o.Name) }
 
-// CompiledFunction is a bytecode-compiled function.
-type CompiledFunction struct {
-	Instructions []byte
-	NumLocals    int
-	NumParams    int
-	Name         string
+// TypeName returns the Swahili type name for an object.
+func TypeName(obj Object) string {
+	switch obj.(type) {
+	case *NumberObj:
+		return "nambari"
+	case *StringObj:
+		return "tungo"
+	case *BoolObj:
+		return "buliani"
+	case *ListObj:
+		return "safu"
+	case *DictObj:
+		return "kamusi"
+	case *FuncObj:
+		return "unda"
+	default:
+		return "tupu"
+	}
 }
 
-func (o *CompiledFunction) Inspect() string {
-	return fmt.Sprintf("<unda-compiled %s>", o.Name)
+// IsTruthy returns whether a value is truthy.
+func IsTruthy(obj Object) bool {
+	switch o := obj.(type) {
+	case *BoolObj:
+		return o.Value
+	case *NullObj:
+		return false
+	case *NumberObj:
+		return o.Value != 0
+	case *StringObj:
+		return o.Value != ""
+	case *ListObj:
+		return len(o.Elements) > 0
+	case *DictObj:
+		return len(o.Pairs) > 0
+	default:
+		return true
+	}
 }
 
-// Closure wraps a compiled function with its captured upvalues.
-type Closure struct {
-	Fn       *CompiledFunction
-	Upvalues []*Upvalue
+// ObjectsEqual checks structural equality of two objects.
+func ObjectsEqual(a, b Object) bool {
+	switch av := a.(type) {
+	case *NumberObj:
+		if bv, ok := b.(*NumberObj); ok {
+			return av.Value == bv.Value
+		}
+	case *StringObj:
+		if bv, ok := b.(*StringObj); ok {
+			return av.Value == bv.Value
+		}
+	case *BoolObj:
+		if bv, ok := b.(*BoolObj); ok {
+			return av.Value == bv.Value
+		}
+	case *NullObj:
+		_, ok := b.(*NullObj)
+		return ok
+	}
+	return false
 }
 
-func (o *Closure) Inspect() string { return fmt.Sprintf("<closure %s>", o.Fn.Name) }
+// Null is a singleton null value to avoid repeated allocations.
+var Null = &NullObj{}
 
-// Upvalue represents a captured variable from an enclosing scope.
-type Upvalue struct {
-	Value  Object
-	Closed bool
-}
+// True and False are singleton boolean values.
+var True = &BoolObj{Value: true}
+var False = &BoolObj{Value: false}

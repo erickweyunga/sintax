@@ -30,12 +30,9 @@ func main() {
 	}
 }
 
-// sintax file.sx — run with interpreter
 func runCommand() {
 	filename := os.Args[1]
-
-	program, sourceStr := parseFile(filename)
-	result := preprocessor.Process(sourceStr)
+	program, sourceStr, result := parseFile(filename)
 
 	evaluator.SetSourceInfo(&evaluator.SourceInfo{
 		Filename: filename,
@@ -49,7 +46,6 @@ func runCommand() {
 	}
 }
 
-// sintax build file.sx [-o name] — compile to native binary
 func buildCommand() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Matumizi: sintax build <faili.sx> [-o jina]\n")
@@ -77,33 +73,39 @@ func buildCommand() {
 		outputName = strings.TrimSuffix(base, filepath.Ext(base))
 	}
 
-	program, _ := parseFile(filename)
+	program, _, _ := parseFile(filename)
 
-	// Generate LLVM IR
 	cg := codegen.New()
 	llvmIR := cg.Generate(program)
 
-	// Write IR to temp file
 	irFile := outputName + ".ll"
 	if err := os.WriteFile(irFile, []byte(llvmIR), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Kosa: Haiwezi kuandika faili la IR: %v\n", err)
 		os.Exit(1)
 	}
+	defer os.Remove(irFile)
 
-	// Find runtime.c
 	runtimePath := findRuntime()
 
-	// Compile with clang
-	fmt.Printf("Kukusanya %s → %s...\n", filename, outputName)
+	fmt.Printf("Inapakia Programu %s → %s...\n", filename, outputName)
 
-	gcInclude := "/opt/homebrew/include"
-	gcLib := "/opt/homebrew/lib"
 	args := []string{"-O2", "-Wno-override-module", "-o", outputName, irFile, runtimePath, "-lm"}
 
-	if _, err := os.Stat(filepath.Join(gcLib, "libgc.dylib")); err == nil {
-		args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
-	} else if _, err := os.Stat(filepath.Join(gcLib, "libgc.a")); err == nil {
-		args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
+	// Check for Boehm GC in common locations
+	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
+		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
+		if _, err := os.Stat(filepath.Join(gcLib, "libgc.dylib")); err == nil {
+			args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
+			break
+		}
+		if _, err := os.Stat(filepath.Join(gcLib, "libgc.a")); err == nil {
+			args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
+			break
+		}
+		if _, err := os.Stat(filepath.Join(gcLib, "libgc.so")); err == nil {
+			args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
+			break
+		}
 	}
 
 	cmd := exec.Command("clang", args...)
@@ -114,8 +116,7 @@ func buildCommand() {
 		os.Exit(1)
 	}
 
-	os.Remove(irFile)
-	fmt.Printf("Imefanikiwa! Endesha: ./%s\n", outputName)
+	fmt.Printf("Imefanikiwa! Anzisha Programu: ./%s\n", outputName)
 }
 
 func printHelp() {
@@ -123,13 +124,13 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Matumizi:")
 	fmt.Println("  sintax                     REPL")
-	fmt.Println("  sintax <faili.sx>          Endesha faili")
+	fmt.Println("  sintax <faili.sx>          Anzisha Programu faili")
 	fmt.Println("  sintax build <faili.sx>    Kusanya hadi binary")
 	fmt.Println("  sintax build <f.sx> -o out Kusanya na jina maalum")
 	fmt.Println("  sintax help                Onyesha msaada huu")
 }
 
-func parseFile(filename string) (*parser.Program, string) {
+func parseFile(filename string) (*parser.Program, string, preprocessor.Result) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "Kosa: Faili '%s' haipo\n", filename)
 		os.Exit(1)
@@ -151,24 +152,32 @@ func parseFile(filename string) (*parser.Program, string) {
 		os.Exit(1)
 	}
 
-	return program, sourceStr
+	return program, sourceStr, result
 }
 
 func findRuntime() string {
-	exe, _ := os.Executable()
-	exeDir := filepath.Dir(exe)
-
-	paths := []string{
-		filepath.Join(exeDir, "runtime", "runtime.c"),
-		filepath.Join(exeDir, "..", "runtime", "runtime.c"),
-		"runtime/runtime.c",
-		filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "erickweyunga", "sintax", "runtime", "runtime.c"),
+	exe, err := os.Executable()
+	if err == nil {
+		exeDir := filepath.Dir(exe)
+		for _, rel := range []string{"runtime/runtime.c", "../runtime/runtime.c"} {
+			p := filepath.Join(exeDir, rel)
+			if _, err := os.Stat(p); err == nil {
+				abs, _ := filepath.Abs(p)
+				return abs
+			}
+		}
 	}
 
-	for _, p := range paths {
+	if _, err := os.Stat("runtime/runtime.c"); err == nil {
+		abs, _ := filepath.Abs("runtime/runtime.c")
+		return abs
+	}
+
+	gopath := os.Getenv("GOPATH")
+	if gopath != "" {
+		p := filepath.Join(gopath, "src", "github.com", "erickweyunga", "sintax", "runtime", "runtime.c")
 		if _, err := os.Stat(p); err == nil {
-			abs, _ := filepath.Abs(p)
-			return abs
+			return p
 		}
 	}
 

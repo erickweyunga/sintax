@@ -20,6 +20,7 @@
 
 static SxValue* sx_alloc(SxType type) {
     SxValue *v = (SxValue*)SX_MALLOC(sizeof(SxValue));
+    if (!v) { fprintf(stderr, "Kosa: kumbukumbu imekwisha\n"); exit(1); }
     v->type = type;
     return v;
 }
@@ -27,6 +28,7 @@ static SxValue* sx_alloc(SxType type) {
 static char* sx_strdup(const char *s) {
     size_t len = strlen(s);
     char *dup = (char*)SX_MALLOC(len + 1);
+    if (!dup) { fprintf(stderr, "Kosa: kumbukumbu imekwisha\n"); exit(1); }
     memcpy(dup, s, len + 1);
     return dup;
 }
@@ -518,7 +520,9 @@ SxValue* sx_to_number(SxValue *v) {
     switch (v->type) {
         case SX_NUMBER: return v;
         case SX_STRING: {
-            double n = atof(v->string);
+            char *end;
+            double n = strtod(v->string, &end);
+            if (end == v->string) sx_error("Haiwezi kubadilisha tungo kuwa nambari");
             return sx_number(n);
         }
         case SX_BOOL: return sx_number(v->boolean ? 1 : 0);
@@ -559,15 +563,18 @@ SxValue* sx_concat(int count, ...) {
     }
     va_end(args);
 
-    // Second pass: build string
+    // Second pass: build string with running offset (O(n) instead of O(n^2))
     char *result = (char*)SX_MALLOC(total + 1);
-    result[0] = '\0';
+    size_t offset = 0;
     va_start(args, count);
     for (int i = 0; i < count; i++) {
         SxValue *v = va_arg(args, SxValue*);
         SxValue *s = sx_to_string(v);
-        strcat(result, s->string);
+        size_t len = strlen(s->string);
+        memcpy(result + offset, s->string, len);
+        offset += len;
     }
+    result[offset] = '\0';
     va_end(args);
 
     SxValue *sv = sx_alloc(SX_STRING);

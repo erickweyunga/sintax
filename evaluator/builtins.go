@@ -42,7 +42,7 @@ func builtinAndika(args []*parser.Expr, env *Environment) object.Object {
 		vals[i] = evalExpr(arg, env).Inspect()
 	}
 	fmt.Println(strings.Join(vals, " "))
-	return &object.NullObj{}
+	return object.Null
 }
 
 // aina — return the type of a value as a string
@@ -50,23 +50,7 @@ func builtinAina(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("aina() inahitaji hoja 1")
 	}
-	val := evalExpr(args[0], env)
-	switch val.(type) {
-	case *object.NumberObj:
-		return &object.StringObj{Value: "nambari"}
-	case *object.StringObj:
-		return &object.StringObj{Value: "tungo"}
-	case *object.BoolObj:
-		return &object.StringObj{Value: "buliani"}
-	case *object.FuncObj:
-		return &object.StringObj{Value: "unda"}
-	case *object.ListObj:
-		return &object.StringObj{Value: "safu"}
-	case *object.DictObj:
-		return &object.StringObj{Value: "kamusi"}
-	default:
-		return &object.StringObj{Value: "tupu"}
-	}
+	return &object.StringObj{Value: object.TypeName(evalExpr(args[0], env))}
 }
 
 // urefu — return the length of a list or string
@@ -85,7 +69,7 @@ func builtinUrefu(args []*parser.Expr, env *Environment) object.Object {
 	default:
 		runtimeError("urefu() inahitaji safu, tungo, au kamusi")
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 // ongeza — append an item to a list
@@ -260,9 +244,9 @@ func builtinNambari(args []*parser.Expr, env *Environment) object.Object {
 		}
 		return &object.NumberObj{Value: 0}
 	default:
-		runtimeError("Haiwezi kubadilisha %s kuwa nambari", ainaName(val))
+		runtimeError("Haiwezi kubadilisha %s kuwa nambari", object.TypeName(val))
 	}
-	return &object.NullObj{}
+	return object.Null
 }
 
 // tungo — convert to string
@@ -280,25 +264,5 @@ func builtinBuliani(args []*parser.Expr, env *Environment) object.Object {
 		runtimeError("buliani() inahitaji hoja 1")
 	}
 	val := evalExpr(args[0], env)
-	return &object.BoolObj{Value: isTruthy(val)}
-}
-
-// helper to get type name in Swahili
-func ainaName(obj object.Object) string {
-	switch obj.(type) {
-	case *object.NumberObj:
-		return "nambari"
-	case *object.StringObj:
-		return "tungo"
-	case *object.BoolObj:
-		return "buliani"
-	case *object.ListObj:
-		return "safu"
-	case *object.DictObj:
-		return "kamusi"
-	case *object.FuncObj:
-		return "unda"
-	default:
-		return "tupu"
-	}
+	return &object.BoolObj{Value: object.IsTruthy(val)}
 }
