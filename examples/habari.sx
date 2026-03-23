@@ -1,0 +1,42 @@
+-- Hii ni programu ya Sintax!
+
+-- Unda (function)
+unda (a, b) jumla:
+    a + b
+
+x = jumla(5, 3)
+>> x
+
+-- Masharti (conditionals)
+kama x > 4:
+    >> "Kubwa"
+sivyo:
+    >> "Ndogo"
+
+-- Orodha (lists)
+matunda = ["Embe", "Ndizi", "Nanasi"]
+andika(matunda)
+andika("Matunda:", urefu(matunda))
+
+-- Fahirisi (indexing)
+>> matunda[0]
+matunda[0] = "Papai"
+andika(matunda)
+
+-- Ongeza kipengele (append)
+ongeza(matunda, "Chungwa")
+andika(matunda)
+
+-- Kitanzi cha kwa..ktk (for loop)
+kwa tunda ktk matunda:
+    >> tunda
+
+-- Kitanzi cha wkt (while loop)
+i = 0
+wkt i < 5:
+    andika("Hesabu:", i)
+    i = i + 1
+
+-- Masafa (range)
+kwa n ktk masafa(3):
+    andika("masafa:", n)

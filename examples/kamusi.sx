@@ -1,0 +1,30 @@
+-- Kamusi (Dictionaries)
+
+mtu = {"jina": "Erick", "umri": 25, "lugha": "Kiswahili"}
+>> mtu
+
+-- Kufikia thamani
+>> mtu["jina"]
+>> mtu["umri"]
+
+-- Kubadilisha thamani
+mtu["umri"] = 26
+>> mtu
+
+-- Kuongeza ufunguo mpya
+mtu["nchi"] = "Tanzania"
+>> mtu
+
+-- Vitendaji vya kamusi
+andika("Funguo:", funguo(mtu))
+andika("Thamani:", thamani(mtu))
+andika("Urefu:", urefu(mtu))
+andika("Ina jina?", ina(mtu, "jina"))
+
+-- Kitanzi cha kamusi
+kwa ufunguo ktk mtu:
+    andika("{ufunguo} =", mtu[ufunguo])
+
+-- String interpolation
+jina = "Sintax"
+>> "Habari kutoka {jina}!"

@@ -1,0 +1,180 @@
+--{
+VIPIMO VYA SINTAX
+Programu hii inajaribu vipengele vyote vya lugha.
+}--
+
+>> "=== 1. VIGEZO NA AINA ==="
+x = 42
+>> x
+nambari a = 10
+tungo jina = "Sintax"
+buliani hai = kweli
+safu nambari_list = [1, 2, 3]
+kamusi data = {"v": "0.1"}
+>> a
+>> jina
+>> hai
+>> nambari_list
+>> data
+
+>> "=== 2. AINA() - TYPE CHECK ==="
+>> aina(a)
+>> aina(jina)
+>> aina(hai)
+>> aina(nambari_list)
+>> aina(data)
+>> aina(tupu)
+
+>> "=== 3. KUBADILISHA AINA ==="
+>> nambari("100")
+>> tungo(42)
+>> buliani(1)
+>> buliani(0)
+>> buliani("")
+>> buliani("habari")
+
+>> "=== 4. HISABATI ==="
+>> 10 + 5
+>> 10 - 3
+>> 4 * 7
+>> 20 / 4
+>> 17 % 5
+
+>> "=== 5. KULINGANISHA ==="
+>> 5 > 3
+>> 5 < 3
+>> 5 == 5
+>> 5 != 3
+>> 5 >= 5
+>> 5 <= 4
+
+>> "=== 6. MANTIKI (na, au, si) ==="
+>> kweli na kweli
+>> kweli na sikweli
+>> sikweli au kweli
+>> sikweli au sikweli
+>> si kweli
+>> si sikweli
+
+>> "=== 7. TUNGO ==="
+>> "Habari" + " " + "Dunia"
+jina2 = "Erick"
+>> "Jina langu ni {jina2}"
+>> urefu("Habari")
+
+>> "=== 8. UNDA (FUNCTIONS) ==="
+-- Untyped
+unda (a, b) jumla:
+    a + b
+
+>> jumla(5, 3)
+
+-- Implicit return
+unda (n) mraba:
+    n * n
+
+>> mraba(7)
+
+-- Typed function
+unda (nambari x, nambari y) nambari zidisha:
+    x * y
+
+>> zidisha(4, 5)
+
+-- Rudisha explicit
+unda (nambari n) nambari factorial:
+    kama n <= 1:
+        rudisha 1
+    sivyo:
+        rudisha n * factorial(n - 1)
+
+>> factorial(5)
+
+>> "=== 9. KAMA / SIVYO ==="
+x = 10
+kama x > 5:
+    >> "Kubwa"
+sivyo:
+    >> "Ndogo"
+
+kama x == 10 na hai:
+    >> "x ni 10 na hai ni kweli"
+
+>> "=== 10. CHAGUA / IKIWA ==="
+siku = "Jumatatu"
+chagua siku:
+    ikiwa "Jumatatu":
+        >> "Siku ya kwanza"
+    ikiwa "Ijumaa":
+        >> "Siku ya tano"
+    _:
+        >> "Siku nyingine"
+
+>> "=== 11. WKT (WHILE) ==="
+i = 0
+wkt i < 5:
+    >> i
+    i = i + 1
+
+>> "=== 12. KWA..KTK (FOR) ==="
+kwa n ktk masafa(5):
+    >> n
+
+kwa tunda ktk ["Embe", "Ndizi", "Nanasi"]:
+    >> tunda
+
+>> "=== 13. 0 (BREAK) NA 1 (CONTINUE) ==="
+-- Break at 3
+kwa n ktk masafa(10):
+    kama n == 3:
+        0
+    >> n
+
+-- Skip even
+kwa n ktk masafa(6):
+    kama n % 2 == 0:
+        1
+    >> n
+
+>> "=== 14. SAFU (LISTS) ==="
+matunda = ["Embe", "Ndizi", "Nanasi"]
+>> matunda
+>> matunda[0]
+>> urefu(matunda)
+matunda[0] = "Papai"
+>> matunda
+ongeza(matunda, "Chungwa")
+>> matunda
+ondoa(matunda, 0)
+>> matunda
+
+>> "=== 15. KAMUSI (DICTS) ==="
+mtu = {"jina": "Erick", "umri": 25}
+>> mtu
+>> mtu["jina"]
+mtu["umri"] = 26
+mtu["nchi"] = "Tanzania"
+>> mtu
+>> funguo(mtu)
+>> thamani(mtu)
+>> ina(mtu, "jina")
+>> ina(mtu, "barua")
+>> urefu(mtu)
+
+kwa k ktk mtu:
+    andika(k, "=>", mtu[k])
+
+>> "=== 16. MASAFA ==="
+>> masafa(5)
+>> masafa(2, 7)
+
+>> "=== 17. ANDIKA (MULTI-ARG) ==="
+andika("Jina:", "Erick", "Umri:", 25)
+
+>> "=== 18. TYPE ENFORCEMENT ==="
+nambari safe = 100
+safe = 200
+>> safe
+-- safe = "oops" would error
+
+>> "=== VIPIMO VYOTE VIMEFAULU! ==="

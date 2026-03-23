@@ -1,0 +1,25 @@
+# Binary
+sintax
+*.exe
+
+# Build artifacts
+*.ll
+*.o
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go
+vendor/
+
+# Test binaries
+/tmp/

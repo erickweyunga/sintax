@@ -1,0 +1,42 @@
+-- Sintax Performance Benchmark
+
+-- 1. Arithmetic loop (1 million iterations)
+i = 0
+x = 0
+wkt i < 1000000:
+    x = x + i
+    i += 1
+>> x
+
+-- 2. Fibonacci (recursive)
+unda (nambari n) nambari fib:
+    kama n <= 1:
+        rudisha n
+    sivyo:
+        rudisha fib(n - 1) + fib(n - 2)
+
+>> fib(30)
+
+-- 3. String building
+s = ""
+i = 0
+wkt i < 1000:
+    s += "a"
+    i += 1
+>> urefu(s)
+
+-- 4. List operations
+orodha = []
+i = 0
+wkt i < 10000:
+    ongeza(orodha, i)
+    i += 1
+>> urefu(orodha)
+
+-- 5. Dict operations
+kamusi = {}
+i = 0
+wkt i < 1000:
+    kamusi[tungo(i)] = i
+    i += 1
+>> urefu(kamusi)
