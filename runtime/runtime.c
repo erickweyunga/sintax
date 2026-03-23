@@ -118,7 +118,7 @@ static void sx_dict_resize(SxDict *d) {
     d->capacity = new_cap;
 }
 
-static SxDictBucket* sx_dict_find(SxDict *d, const char *key) {
+SxDictBucket* sx_dict_find(SxDict *d, const char *key) {
     unsigned long h = sx_hash(key) & (d->capacity - 1);
     int attempts = 0;
     while (d->buckets[h].used) {

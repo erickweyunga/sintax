@@ -78,6 +78,34 @@ func (cg *CodeGen) Generate(program *parser.Program) string {
 	return cg.mod.String()
 }
 
+// CompileModule compiles an imported module's function definitions.
+// The prefix is prepended to function names (e.g. "math" → "math__sqrt").
+// For wildcard imports, functions are also registered without prefix.
+func (cg *CodeGen) CompileModule(program *parser.Program, prefix string, wildcard bool) {
+	for _, stmt := range program.Statements {
+		if stmt.FuncDef != nil {
+			// Forward-declare with prefix
+			prefixed := *stmt.FuncDef
+			prefixed.Name = prefix + "__" + stmt.FuncDef.Name
+			cg.forwardDeclare(&prefixed)
+			if wildcard {
+				cg.forwardDeclare(stmt.FuncDef)
+			}
+		}
+	}
+	for _, stmt := range program.Statements {
+		if stmt.FuncDef != nil {
+			prefixed := *stmt.FuncDef
+			prefixed.Name = prefix + "__" + stmt.FuncDef.Name
+			cg.compileFuncDef(&prefixed)
+			if wildcard {
+				// Also compile without prefix so direct calls work
+				cg.compileFuncDef(stmt.FuncDef)
+			}
+		}
+	}
+}
+
 // --- Runtime declarations (table-driven) ---
 
 type rtDecl struct {
@@ -163,6 +191,10 @@ var runtimeDecls = []rtDecl{
 	{"__native_getenv", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_exec", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_time", sxValuePtr, nil},
+	// JSON
+	{"__native_json_parse", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_json_stringify", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_json_pretty", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_function", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_error_new", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_call", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, i32}},

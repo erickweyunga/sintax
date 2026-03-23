@@ -93,9 +93,16 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 	case p.Number != nil:
 		result = &object.NumberObj{Value: *p.Number}
 	case p.String != nil:
-		s := (*p.String)[1 : len(*p.String)-1]
-		s = preprocessor.ProcessEscapes(s)
-		s = interpolateString(s, env)
+		raw := *p.String
+		s := raw[1 : len(raw)-1]
+		if raw[0] == '\'' {
+			// Single-quoted: raw string, no interpolation, only \' escape
+			s = strings.ReplaceAll(s, "\\'", "'")
+		} else {
+			// Double-quoted: escapes + interpolation
+			s = preprocessor.ProcessEscapes(s)
+			s = interpolateString(s, env)
+		}
 		result = &object.StringObj{Value: s}
 	case p.Ident != nil:
 		switch *p.Ident {

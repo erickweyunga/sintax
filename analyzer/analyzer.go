@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/erickweyunga/sintax/parser"
@@ -39,8 +41,10 @@ type FuncInfo struct {
 	Name       string
 	Arity      int
 	ParamNames []string
-	Line       int  // definition line (0 = builtin)
-	Used       bool // was this function ever called?
+	ParamTypes []string // type per param ("" = untyped)
+	ReturnType string   // "" = untyped
+	Line       int      // definition line (0 = builtin)
+	Used       bool     // was this function ever called?
 	IsBuiltin  bool
 }
 
@@ -61,6 +65,13 @@ type ImportInfo struct {
 	Line     int
 }
 
+// StdlibSig holds a stdlib function's type signature.
+type StdlibSig struct {
+	ParamTypes []string // e.g. ["num"] or ["str", "str"]
+	ReturnType string   // e.g. "num", "str", "list", "bool", ""
+	Arity      int
+}
+
 // Analyzer validates a Sintax AST before execution or compilation.
 type Analyzer struct {
 	scopes    []map[string]*VarInfo
@@ -71,6 +82,7 @@ type Analyzer struct {
 	importedFuncs   map[string]*ImportInfo
 	importedModules map[string]bool
 	wildcardModules map[string]bool
+	usedModules     map[string]bool
 
 	// source info for error messages
 	file    string
@@ -80,6 +92,12 @@ type Analyzer struct {
 	errors []Error
 	inLoop int  // nesting depth of loops
 	inFunc bool // inside a function body?
+
+	// Known stdlib module names (discovered from filesystem)
+	stdlibModules map[string]bool
+
+	// Stdlib function signatures: "math__sqrt" → {ParamTypes: ["num"], ReturnType: "num"}
+	stdlibSigs map[string]*StdlibSig
 
 	// Track string concat in loops: variable name → true if s += "..." seen in loop
 	loopStringConcat map[string]bool
@@ -93,6 +111,7 @@ func New(file string, lines []string, lineMap []int) *Analyzer {
 		importedFuncs:    make(map[string]*ImportInfo),
 		importedModules:  make(map[string]bool),
 		wildcardModules:  make(map[string]bool),
+		usedModules:      make(map[string]bool),
 		loopStringConcat: make(map[string]bool),
 		file:             file,
 		lines:            lines,
@@ -107,15 +126,18 @@ func Analyze(
 	file string,
 	lines []string,
 	lineMap []int,
+	stdlibDir string,
 ) []Error {
 	a := New(file, lines, lineMap)
 	a.imports = imports
+	a.stdlibModules = make(map[string]bool)
+	a.stdlibSigs = make(map[string]*StdlibSig)
+	a.loadStdlibDir(stdlibDir)
 	a.registerImports()
 	a.registerBuiltins()
 	a.analyze(program)
 
 	// Post-analysis checks
-	a.checkUnusedVars()
 	a.checkUnusedFuncs()
 	a.checkUnusedImports()
 
@@ -132,9 +154,6 @@ func (a *Analyzer) analyze(program *parser.Program) {
 		}
 	}
 
-	// Mark functions referenced in -- test: comments as used
-	a.markTestReferences()
-
 	// Pass 2: check all statements
 	for i, stmt := range program.Statements {
 		a.checkStatement(stmt)
@@ -146,6 +165,12 @@ func (a *Analyzer) analyze(program *parser.Program) {
 			break
 		}
 	}
+
+	// Mark functions/variables referenced in -- test: comments as used
+	a.markTestReferences()
+
+	// Check unused vars before popping scope
+	a.checkUnusedVars()
 
 	a.popScope()
 }
@@ -338,17 +363,78 @@ func (a *Analyzer) getVarType(name string) string {
 
 // --- Registration ---
 
+// loadStdlibDir scans the stdlib directory, parses each .sx file,
+// and extracts function signatures for type checking.
+func (a *Analyzer) loadStdlibDir(dir string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	p := parser.NewParser()
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".sx") {
+			continue
+		}
+		modName := strings.TrimSuffix(e.Name(), ".sx")
+		a.stdlibModules["std/"+modName] = true
+
+		source, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		result := preprocessor.Process(string(source))
+		program, err := p.ParseString(e.Name(), result.Source)
+		if err != nil {
+			continue
+		}
+		for _, stmt := range program.Statements {
+			if stmt.FuncDef == nil {
+				continue
+			}
+			fd := stmt.FuncDef
+			sig := &StdlibSig{Arity: len(fd.Params)}
+			for _, param := range fd.Params {
+				t := ""
+				if param.Type != nil {
+					t = *param.Type
+				}
+				sig.ParamTypes = append(sig.ParamTypes, t)
+			}
+			if fd.ReturnType != nil {
+				sig.ReturnType = *fd.ReturnType
+			}
+			// Register as both "math__sqrt" and "sqrt"
+			a.stdlibSigs[modName+"__"+fd.Name] = sig
+			a.stdlibSigs[fd.Name] = sig
+		}
+	}
+}
+
 func (a *Analyzer) registerFunc(fd *parser.FuncDef) {
 	paramNames := make([]string, len(fd.Params))
+	paramTypes := make([]string, len(fd.Params))
 	for i, p := range fd.Params {
 		paramNames[i] = p.Name
+		if p.Type != nil {
+			paramTypes[i] = *p.Type
+		}
+	}
+	retType := ""
+	if fd.ReturnType != nil {
+		retType = *fd.ReturnType
 	}
 	a.functions[fd.Name] = &FuncInfo{
 		Name:       fd.Name,
 		Arity:      len(fd.Params),
 		ParamNames: paramNames,
+		ParamTypes: paramTypes,
+		ReturnType: retType,
 	}
 }
+
 
 func (a *Analyzer) registerBuiltins() {
 	builtins := map[string]int{
@@ -365,6 +451,8 @@ func (a *Analyzer) registerBuiltins() {
 		"num":    1,
 		"str":    1,
 		"bool":   1,
+		"error":  1,
+		"err":    1,
 	}
 	for name, arity := range builtins {
 		a.functions[name] = &FuncInfo{
@@ -394,7 +482,7 @@ func (a *Analyzer) registerImports() {
 			continue
 		}
 
-		if !strings.HasPrefix(imp.Module, "std/") {
+		if !a.stdlibModules[imp.Module] {
 			a.errors = append(a.errors, Error{
 				Level:   "error",
 				Message: fmt.Sprintf("Unknown module '%s'", imp.Module),
@@ -436,24 +524,18 @@ func (a *Analyzer) checkUnusedFuncs() {
 }
 
 func (a *Analyzer) checkUnusedImports() {
-	// Group by module to detect entirely unused modules
-	moduleUsed := make(map[string]bool)
-	for _, imp := range a.importedFuncs {
-		if imp.Used {
-			moduleUsed[imp.Module] = true
-		}
-	}
 	for _, imp := range a.imports {
 		mod := imp.Module
 		if strings.HasSuffix(mod, ".sx") {
-			continue // skip user module imports
-		}
-		if !strings.HasPrefix(mod, "std/") && !strings.HasSuffix(mod, ".sx") {
 			continue
 		}
-		if !moduleUsed[mod] {
-			a.addWarning(0, "Imported module '%s' is never used", mod)
+		if !strings.HasPrefix(mod, "std/") {
+			continue
 		}
+		if a.usedModules[mod] {
+			continue
+		}
+		a.addWarning(0, "Imported module '%s' is never used", mod)
 	}
 }
 
@@ -883,8 +965,10 @@ func (a *Analyzer) checkPrimary(p *parser.Primary, line int) {
 			a.checkExpr(el, line)
 		}
 	case p.String != nil:
-		// Mark variables used in string interpolation: "hello {name}"
-		a.markInterpolationRefs(*p.String)
+		// Only double-quoted strings support interpolation
+		if (*p.String)[0] == '"' {
+			a.markInterpolationRefs(*p.String)
+		}
 	case p.Ident != nil:
 		a.checkIdent(*p.Ident, line)
 	case p.SubExpr != nil:
@@ -947,6 +1031,8 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 	if f, ok := a.functions[fc.Name]; ok {
 		f.Used = true
 		a.checkArity(fc.Name, len(fc.Args), f.Arity, line)
+		// Type check arguments against parameter types
+		a.checkArgTypes(fc, f, line)
 		return
 	}
 
@@ -986,16 +1072,219 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 	if strings.Contains(fc.Name, "__") {
 		parts := strings.SplitN(fc.Name, "__", 2)
 		if a.importedModules["std/"+parts[0]] || a.importedModules[parts[0]] {
-			return // allow — function from imported module
+			a.usedModules["std/"+parts[0]] = true
+			a.usedModules[parts[0]] = true
+			a.checkStdlibCallTypes(fc, line)
+			return
 		}
 	}
 
 	// Wildcard module — allow any function if module is wildcard-imported
-	if len(a.wildcardModules) > 0 {
-		return // can't validate without parsing the .sx file
+	for mod := range a.wildcardModules {
+		a.usedModules[mod] = true
+		a.checkStdlibCallTypes(fc, line)
+		return
 	}
 
 	a.addError(line, "Undefined function: '%s'", fc.Name)
+}
+
+func (a *Analyzer) checkArgTypes(fc *parser.FuncCall, f *FuncInfo, line int) {
+	if len(f.ParamTypes) == 0 {
+		return
+	}
+	for i, arg := range fc.Args {
+		if i >= len(f.ParamTypes) {
+			break
+		}
+		expectedType := f.ParamTypes[i]
+		if expectedType == "" {
+			continue // untyped param, skip
+		}
+		argType := a.inferExprType(arg)
+		if argType == "" {
+			continue // can't determine type, skip
+		}
+		if argType != expectedType {
+			a.addError(line, "Function '%s' arg '%s' expects %s, got %s",
+				f.Name, f.ParamNames[i], expectedType, argType)
+		}
+	}
+}
+
+// inferExprType tries to determine the type of an expression at analysis time.
+// Returns "" if the type cannot be determined.
+func (a *Analyzer) inferExprType(expr *parser.Expr) string {
+	if expr == nil || expr.Left == nil {
+		return ""
+	}
+	// Simple case: no operators, just walk down to the primary
+	if len(expr.Ops) > 0 {
+		return "bool" // or expressions always produce bool
+	}
+	return a.inferLogicalAndType(expr.Left)
+}
+
+func (a *Analyzer) inferLogicalAndType(and *parser.LogicalAnd) string {
+	if and == nil || and.Left == nil {
+		return ""
+	}
+	if len(and.Ops) > 0 {
+		return "bool"
+	}
+	return a.inferComparisonType(and.Left)
+}
+
+func (a *Analyzer) inferComparisonType(cmp *parser.Comparison) string {
+	if cmp == nil || cmp.Left == nil {
+		return ""
+	}
+	if cmp.Op != "" {
+		return "bool" // comparisons always produce bool
+	}
+	return a.inferAdditionType(cmp.Left)
+}
+
+func (a *Analyzer) inferAdditionType(add *parser.Addition) string {
+	if add == nil || add.Left == nil {
+		return ""
+	}
+	leftType := a.inferMultiplicationType(add.Left)
+	if len(add.Ops) > 0 {
+		// + with strings = str, + with nums = num
+		return leftType
+	}
+	return leftType
+}
+
+func (a *Analyzer) inferMultiplicationType(mul *parser.Multiplication) string {
+	if mul == nil || mul.Left == nil {
+		return ""
+	}
+	return a.inferUnaryType(mul.Left)
+}
+
+func (a *Analyzer) inferUnaryType(u *parser.Unary) string {
+	if u == nil {
+		return ""
+	}
+	if u.Not != nil {
+		return "bool"
+	}
+	if u.Neg != nil || u.Pos != nil {
+		return "num"
+	}
+	return a.inferPrimaryType(u.Primary)
+}
+
+func (a *Analyzer) inferPrimaryType(p *parser.Primary) string {
+	if p == nil {
+		return ""
+	}
+	switch {
+	case p.Number != nil:
+		return "num"
+	case p.String != nil:
+		return "str"
+	case p.ListLit != nil:
+		return "list"
+	case p.DictLit != nil:
+		return "dict"
+	case p.Lambda != nil:
+		return "fn"
+	case p.Ident != nil:
+		name := *p.Ident
+		if name == "true" || name == "false" {
+			return "bool"
+		}
+		if name == "null" {
+			return "null"
+		}
+		// Check variable type
+		if v := a.findVar(name); v != nil && v.Type != "" {
+			return v.Type
+		}
+		return ""
+	case p.FuncCall != nil:
+		// Check return type of the function
+		if f, ok := a.functions[p.FuncCall.Name]; ok {
+			return f.ReturnType
+		}
+		// Stdlib return type
+		if rt := a.stdlibReturnType(p.FuncCall.Name); rt != "" {
+			return rt
+		}
+		// Known builtins return types
+		return a.inferBuiltinReturnType(p.FuncCall.Name)
+	case p.SubExpr != nil:
+		return a.inferExprType(p.SubExpr)
+	}
+	return ""
+}
+
+func (a *Analyzer) inferBuiltinReturnType(name string) string {
+	switch name {
+	case "len":
+		return "num"
+	case "type", "str", "input":
+		return "str"
+	case "bool", "err", "has":
+		return "bool"
+	case "num":
+		return "num"
+	case "keys", "values", "range", "split":
+		return "list"
+	case "print":
+		return "null"
+	case "error":
+		return "error"
+	}
+	// Check namespaced stdlib functions
+	if strings.Contains(name, "__") {
+		parts := strings.SplitN(name, "__", 2)
+		return a.inferStdlibReturnType(parts[0], parts[1])
+	}
+	return ""
+}
+
+func (a *Analyzer) inferStdlibReturnType(module, fn string) string {
+	switch module {
+	case "math":
+		return "num" // all math functions return num
+	case "string":
+		switch fn {
+		case "split":
+			return "list"
+		case "contains", "starts_with", "ends_with":
+			return "bool"
+		default:
+			return "str"
+		}
+	case "os":
+		switch fn {
+		case "exists":
+			return "bool"
+		case "time":
+			return "num"
+		default:
+			return "str"
+		}
+	case "json":
+		switch fn {
+		case "stringify", "pretty":
+			return "str"
+		}
+	}
+	return ""
+}
+
+func (a *Analyzer) findVar(name string) *VarInfo {
+	for i := len(a.scopes) - 1; i >= 0; i-- {
+		if v, ok := a.scopes[i][name]; ok {
+			return v
+		}
+	}
+	return nil
 }
 
 func (a *Analyzer) checkArity(name string, got, expected int, line int) {
@@ -1015,6 +1304,46 @@ func (a *Analyzer) checkArity(name string, got, expected int, line int) {
 	if got != expected {
 		a.addError(line, "'%s' expects %d args, got %d", name, expected, got)
 	}
+}
+
+// checkStdlibCallTypes checks argument types and arity for stdlib function calls.
+func (a *Analyzer) checkStdlibCallTypes(fc *parser.FuncCall, line int) {
+	sig, ok := a.stdlibSigs[fc.Name]
+	if !ok {
+		return
+	}
+
+	// Check arity
+	if len(fc.Args) != sig.Arity {
+		a.addError(line, "'%s' expects %d args, got %d", fc.Name, sig.Arity, len(fc.Args))
+		return
+	}
+
+	// Check argument types where both the param and arg types are known
+	for i, arg := range fc.Args {
+		if i >= len(sig.ParamTypes) {
+			break
+		}
+		expectedType := sig.ParamTypes[i]
+		if expectedType == "" {
+			continue // untyped param, skip
+		}
+		argType := a.inferExprType(arg)
+		if argType == "" {
+			continue // can't infer, skip
+		}
+		if argType != expectedType {
+			a.addError(line, "'%s' arg %d expects %s, got %s", fc.Name, i+1, expectedType, argType)
+		}
+	}
+}
+
+// stdlibReturnType returns the return type of a stdlib function, or "" if unknown.
+func (a *Analyzer) stdlibReturnType(name string) string {
+	if sig, ok := a.stdlibSigs[name]; ok {
+		return sig.ReturnType
+	}
+	return ""
 }
 
 func (a *Analyzer) checkDictLit(dl *parser.DictLit, line int) {
@@ -1236,106 +1565,3 @@ func exprLiteralKey(expr *parser.Expr) string {
 	return ""
 }
 
-// --- Type inference (best-effort) ---
-
-func (a *Analyzer) inferExprType(expr *parser.Expr) string {
-	if expr == nil || expr.Left == nil || len(expr.Ops) > 0 {
-		return ""
-	}
-	return a.inferLogicalAndType(expr.Left)
-}
-
-func (a *Analyzer) inferLogicalAndType(and *parser.LogicalAnd) string {
-	if and == nil || and.Left == nil {
-		return ""
-	}
-	if len(and.Ops) > 0 {
-		return ""
-	}
-	return a.inferComparisonType(and.Left)
-}
-
-func (a *Analyzer) inferComparisonType(cmp *parser.Comparison) string {
-	if cmp == nil || cmp.Left == nil {
-		return ""
-	}
-	if cmp.Op != "" {
-		return "bool"
-	}
-	return a.inferAdditionType(cmp.Left)
-}
-
-func (a *Analyzer) inferAdditionType(add *parser.Addition) string {
-	if add == nil || add.Left == nil {
-		return ""
-	}
-	if len(add.Ops) > 0 {
-		return ""
-	}
-	return a.inferMultiplicationType(add.Left)
-}
-
-func (a *Analyzer) inferMultiplicationType(mul *parser.Multiplication) string {
-	if mul == nil || mul.Left == nil {
-		return ""
-	}
-	if len(mul.Ops) > 0 {
-		return "num"
-	}
-	return a.inferUnaryType(mul.Left)
-}
-
-func (a *Analyzer) inferUnaryType(u *parser.Unary) string {
-	if u == nil {
-		return ""
-	}
-	if u.Not != nil {
-		return "bool"
-	}
-	if u.Neg != nil || u.Pos != nil {
-		return "num"
-	}
-	if u.Primary != nil {
-		return a.inferPrimaryType(u.Primary)
-	}
-	return ""
-}
-
-func (a *Analyzer) inferPrimaryType(p *parser.Primary) string {
-	if p == nil {
-		return ""
-	}
-	switch {
-	case p.Number != nil:
-		return "num"
-	case p.String != nil:
-		return "str"
-	case p.ListLit != nil:
-		return "list"
-	case p.DictLit != nil:
-		return "dict"
-	case p.Lambda != nil:
-		return "fn"
-	case p.Ident != nil:
-		switch *p.Ident {
-		case "true", "false":
-			return "bool"
-		case "null":
-			return ""
-		default:
-			return a.getVarType(*p.Ident)
-		}
-	case p.FuncCall != nil:
-		switch p.FuncCall.Name {
-		case "len", "num":
-			return "num"
-		case "type", "str":
-			return "str"
-		case "bool", "has":
-			return "bool"
-		case "keys", "values", "range":
-			return "list"
-		}
-	}
-	return ""
-}

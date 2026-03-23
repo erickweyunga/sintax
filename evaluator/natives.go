@@ -1,6 +1,8 @@
 package evaluator
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"math/rand"
 	"os"
@@ -49,6 +51,10 @@ func init() {
 		"__native_getenv":      nativeGetenv,
 		"__native_exec":        nativeExec,
 		"__native_time":        nativeTime,
+		// JSON
+		"__native_json_parse":     nativeJsonParse,
+		"__native_json_stringify": nativeJsonStringify,
+		"__native_json_pretty":    nativeJsonPretty,
 	}
 
 	for name, fn := range natives {
@@ -56,18 +62,37 @@ func init() {
 	}
 }
 
-// Helper: wrap a math.Func(float64) float64 as a builtin
+// --- Type check helpers ---
+
+func expectNum(val object.Object, fn string) *object.NumberObj {
+	n, ok := val.(*object.NumberObj)
+	if !ok {
+		runtimeError("%s() requires a num, got %s", fn, object.TypeName(val))
+	}
+	return n
+}
+
+func expectStr(val object.Object, fn string) *object.StringObj {
+	s, ok := val.(*object.StringObj)
+	if !ok {
+		runtimeError("%s() requires a str, got %s", fn, object.TypeName(val))
+	}
+	return s
+}
+
+// --- Native implementations ---
+
 func nativeMath1(fn func(float64) float64) BuiltinFn {
 	return func(args []*parser.Expr, env *Environment) object.Object {
-		val := evalExpr(args[0], env).(*object.NumberObj)
+		val := expectNum(evalExpr(args[0], env), "math")
 		return &object.NumberObj{Value: fn(val.Value)}
 	}
 }
 
 func nativeMath2(fn func(float64, float64) float64) BuiltinFn {
 	return func(args []*parser.Expr, env *Environment) object.Object {
-		a := evalExpr(args[0], env).(*object.NumberObj)
-		b := evalExpr(args[1], env).(*object.NumberObj)
+		a := expectNum(evalExpr(args[0], env), "math")
+		b := expectNum(evalExpr(args[1], env), "math")
 		return &object.NumberObj{Value: fn(a.Value, b.Value)}
 	}
 }
@@ -77,18 +102,18 @@ func nativeRandom(args []*parser.Expr, env *Environment) object.Object {
 }
 
 func nativeUpper(args []*parser.Expr, env *Environment) object.Object {
-	s := evalExpr(args[0], env).(*object.StringObj)
+	s := expectStr(evalExpr(args[0], env), "upper")
 	return &object.StringObj{Value: strings.ToUpper(s.Value)}
 }
 
 func nativeLower(args []*parser.Expr, env *Environment) object.Object {
-	s := evalExpr(args[0], env).(*object.StringObj)
+	s := expectStr(evalExpr(args[0], env), "lower")
 	return &object.StringObj{Value: strings.ToLower(s.Value)}
 }
 
 func nativeSplit(args []*parser.Expr, env *Environment) object.Object {
-	s := evalExpr(args[0], env).(*object.StringObj)
-	sep := evalExpr(args[1], env).(*object.StringObj)
+	s := expectStr(evalExpr(args[0], env), "split")
+	sep := expectStr(evalExpr(args[1], env), "split")
 	parts := strings.Split(s.Value, sep.Value)
 	elements := make([]object.Object, len(parts))
 	for i, p := range parts {
@@ -98,14 +123,14 @@ func nativeSplit(args []*parser.Expr, env *Environment) object.Object {
 }
 
 func nativeReplace(args []*parser.Expr, env *Environment) object.Object {
-	s := evalExpr(args[0], env).(*object.StringObj)
-	old := evalExpr(args[1], env).(*object.StringObj)
-	new_ := evalExpr(args[2], env).(*object.StringObj)
+	s := expectStr(evalExpr(args[0], env), "replace")
+	old := expectStr(evalExpr(args[1], env), "replace")
+	new_ := expectStr(evalExpr(args[2], env), "replace")
 	return &object.StringObj{Value: strings.ReplaceAll(s.Value, old.Value, new_.Value)}
 }
 
 func nativeReadFile(args []*parser.Expr, env *Environment) object.Object {
-	path := evalExpr(args[0], env).(*object.StringObj)
+	path := expectStr(evalExpr(args[0], env), "read")
 	data, err := os.ReadFile(path.Value)
 	if err != nil {
 		return &object.ErrorObj{Message: "Cannot read file: " + path.Value}
@@ -114,7 +139,7 @@ func nativeReadFile(args []*parser.Expr, env *Environment) object.Object {
 }
 
 func nativeWriteFile(args []*parser.Expr, env *Environment) object.Object {
-	path := evalExpr(args[0], env).(*object.StringObj)
+	path := expectStr(evalExpr(args[0], env), "write")
 	data := evalExpr(args[1], env)
 	if err := os.WriteFile(path.Value, []byte(data.Inspect()), 0644); err != nil {
 		return &object.ErrorObj{Message: "Cannot write file: " + path.Value}
@@ -123,13 +148,13 @@ func nativeWriteFile(args []*parser.Expr, env *Environment) object.Object {
 }
 
 func nativeFileExists(args []*parser.Expr, env *Environment) object.Object {
-	path := evalExpr(args[0], env).(*object.StringObj)
+	path := expectStr(evalExpr(args[0], env), "exists")
 	_, err := os.Stat(path.Value)
 	return &object.BoolObj{Value: err == nil}
 }
 
 func nativeDeleteFile(args []*parser.Expr, env *Environment) object.Object {
-	path := evalExpr(args[0], env).(*object.StringObj)
+	path := expectStr(evalExpr(args[0], env), "delete")
 	if err := os.Remove(path.Value); err != nil {
 		return &object.ErrorObj{Message: "Cannot delete file: " + path.Value}
 	}
@@ -142,7 +167,7 @@ func nativeCwd(args []*parser.Expr, env *Environment) object.Object {
 }
 
 func nativeGetenv(args []*parser.Expr, env *Environment) object.Object {
-	name := evalExpr(args[0], env).(*object.StringObj)
+	name := expectStr(evalExpr(args[0], env), "getenv")
 	val := os.Getenv(name.Value)
 	if val == "" {
 		return object.Null
@@ -151,7 +176,7 @@ func nativeGetenv(args []*parser.Expr, env *Environment) object.Object {
 }
 
 func nativeExec(args []*parser.Expr, env *Environment) object.Object {
-	cmdStr := evalExpr(args[0], env).(*object.StringObj)
+	cmdStr := expectStr(evalExpr(args[0], env), "exec")
 	parts := strings.Fields(cmdStr.Value)
 	if len(parts) == 0 {
 		return &object.StringObj{Value: ""}
@@ -163,4 +188,168 @@ func nativeExec(args []*parser.Expr, env *Environment) object.Object {
 
 func nativeTime(args []*parser.Expr, env *Environment) object.Object {
 	return &object.NumberObj{Value: float64(time.Now().Unix())}
+}
+
+// --- JSON ---
+
+func nativeJsonParse(args []*parser.Expr, env *Environment) object.Object {
+	s := expectStr(evalExpr(args[0], env), "json/parse")
+	dec := json.NewDecoder(strings.NewReader(s.Value))
+	dec.UseNumber()
+	result, err := jsonDecodeValue(dec)
+	if err != nil {
+		return &object.ErrorObj{Message: "Invalid JSON: " + err.Error()}
+	}
+	return result
+}
+
+func jsonDecodeValue(dec *json.Decoder) (object.Object, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	switch v := tok.(type) {
+	case json.Delim:
+		switch v {
+		case '{':
+			return jsonDecodeObject(dec)
+		case '[':
+			return jsonDecodeArray(dec)
+		}
+	case json.Number:
+		f, _ := v.Float64()
+		return &object.NumberObj{Value: f}, nil
+	case string:
+		return &object.StringObj{Value: v}, nil
+	case bool:
+		return &object.BoolObj{Value: v}, nil
+	case nil:
+		return object.Null, nil
+	}
+	return object.Null, nil
+}
+
+func jsonDecodeObject(dec *json.Decoder) (object.Object, error) {
+	pairs := make(map[string]object.Object)
+	var keys []string
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key := tok.(string)
+		keys = append(keys, key)
+		val, err := jsonDecodeValue(dec)
+		if err != nil {
+			return nil, err
+		}
+		pairs[key] = val
+	}
+	dec.Token() // consume closing }
+	return &object.DictObj{Pairs: pairs, Keys: keys}, nil
+}
+
+func jsonDecodeArray(dec *json.Decoder) (object.Object, error) {
+	var elements []object.Object
+	for dec.More() {
+		val, err := jsonDecodeValue(dec)
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, val)
+	}
+	dec.Token() // consume closing ]
+	return &object.ListObj{Elements: elements}, nil
+}
+
+func nativeJsonStringify(args []*parser.Expr, env *Environment) object.Object {
+	val := evalExpr(args[0], env)
+	return &object.StringObj{Value: jsonMarshal(val, "", "")}
+}
+
+func nativeJsonPretty(args []*parser.Expr, env *Environment) object.Object {
+	val := evalExpr(args[0], env)
+	return &object.StringObj{Value: jsonMarshal(val, "", "  ")}
+}
+
+func jsonMarshal(obj object.Object, prefix, indent string) string {
+	var buf strings.Builder
+	jsonWriteValue(&buf, obj, prefix, indent, 0)
+	return buf.String()
+}
+
+func jsonWriteValue(buf *strings.Builder, obj object.Object, prefix, indent string, depth int) {
+	switch v := obj.(type) {
+	case *object.NumberObj:
+		if v.Value == float64(int64(v.Value)) {
+			fmt.Fprintf(buf, "%d", int64(v.Value))
+		} else {
+			fmt.Fprintf(buf, "%g", v.Value)
+		}
+	case *object.StringObj:
+		data, _ := json.Marshal(v.Value)
+		buf.Write(data)
+	case *object.BoolObj:
+		if v.Value {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case *object.NullObj:
+		buf.WriteString("null")
+	case *object.ListObj:
+		buf.WriteByte('[')
+		for i, el := range v.Elements {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if indent != "" {
+				buf.WriteByte('\n')
+				buf.WriteString(prefix)
+				for j := 0; j <= depth; j++ {
+					buf.WriteString(indent)
+				}
+			}
+			jsonWriteValue(buf, el, prefix, indent, depth+1)
+		}
+		if indent != "" && len(v.Elements) > 0 {
+			buf.WriteByte('\n')
+			buf.WriteString(prefix)
+			for j := 0; j < depth; j++ {
+				buf.WriteString(indent)
+			}
+		}
+		buf.WriteByte(']')
+	case *object.DictObj:
+		buf.WriteByte('{')
+		for i, k := range v.Keys {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if indent != "" {
+				buf.WriteByte('\n')
+				buf.WriteString(prefix)
+				for j := 0; j <= depth; j++ {
+					buf.WriteString(indent)
+				}
+			}
+			keyData, _ := json.Marshal(k)
+			buf.Write(keyData)
+			buf.WriteByte(':')
+			if indent != "" {
+				buf.WriteByte(' ')
+			}
+			jsonWriteValue(buf, v.Pairs[k], prefix, indent, depth+1)
+		}
+		if indent != "" && len(v.Keys) > 0 {
+			buf.WriteByte('\n')
+			buf.WriteString(prefix)
+			for j := 0; j < depth; j++ {
+				buf.WriteString(indent)
+			}
+		}
+		buf.WriteByte('}')
+	default:
+		buf.WriteString("null")
+	}
 }

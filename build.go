@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/erickweyunga/sintax/codegen"
+	"github.com/erickweyunga/sintax/parser"
+	"github.com/erickweyunga/sintax/preprocessor"
 )
 
 func buildCommand() {
@@ -48,7 +50,11 @@ func buildCommand() {
 		}
 	}
 
+	fmt.Printf("\033[2mCompiling %s → %s\033[0m\n", filename, outputName)
+
 	cg := codegen.New()
+	compileImports(cg, result.Imports)
+	fmt.Printf("  \033[2mGenerating IR...\033[0m\n")
 	llvmIR := cg.Generate(program)
 
 	irFile := outputName + ".ll"
@@ -71,7 +77,7 @@ func buildCommand() {
 		}
 	}
 
-	fmt.Printf("Compiling %s → %s...\n", filename, outputName)
+	fmt.Printf("  \033[2mLinking native binary...\033[0m\n")
 
 	args := []string{"-O2", "-Wno-override-module", "-o", outputName, irFile}
 	args = append(args, cFiles...)
@@ -128,5 +134,58 @@ func findRuntime() string {
 	fmt.Fprintf(os.Stderr, "Error: Cannot find runtime.c\n")
 	fmt.Fprintf(os.Stderr, "Run 'make install' to set up ~/.sintax/\n")
 	os.Exit(1)
+	return ""
+}
+
+// compileImports parses imported .sx modules and compiles their functions
+// into the codegen module so they're available to the main program.
+func compileImports(cg *codegen.CodeGen, imports []preprocessor.Import) {
+	for _, imp := range imports {
+		modName := imp.Module
+
+		// Resolve stdlib path
+		var filePath string
+		if strings.HasPrefix(modName, "std/") {
+			stdName := strings.TrimPrefix(modName, "std/")
+			filePath = findStdlibFile(stdName)
+			modName = stdName // strip std/ for the function prefix
+		} else if strings.HasSuffix(modName, ".sx") {
+			filePath = modName
+			modName = strings.TrimSuffix(filepath.Base(modName), ".sx")
+		} else {
+			continue
+		}
+
+		if filePath == "" {
+			continue
+		}
+
+		source, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+
+		result := preprocessor.Process(string(source))
+		p := parser.NewParser()
+		program, err := p.ParseString(filePath, result.Source)
+		if err != nil {
+			continue
+		}
+
+		wildcard := imp.Function == "*"
+		fmt.Printf("  \033[2mCompiling module %s\033[0m\n", modName)
+		cg.CompileModule(program, modName, wildcard)
+	}
+}
+
+func findStdlibFile(name string) string {
+	stdlibDir := findStdlibDir()
+	if stdlibDir == "" {
+		return ""
+	}
+	p := filepath.Join(stdlibDir, name+".sx")
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
 	return ""
 }

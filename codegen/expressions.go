@@ -169,12 +169,20 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	case p.Number != nil:
 		result = cg.callRT("sx_number", constant.NewFloat(types.Double, *p.Number))
 	case p.String != nil:
-		s := (*p.String)[1 : len(*p.String)-1]
-		s = preprocessor.ProcessEscapes(s)
-		if strings.Contains(s, "{") && strings.Contains(s, "}") {
-			result = cg.compileInterpolatedString(s)
-		} else {
+		raw := *p.String
+		s := raw[1 : len(raw)-1]
+		if raw[0] == '\'' {
+			// Single-quoted: raw string, no interpolation
+			s = strings.ReplaceAll(s, "\\'", "'")
 			result = cg.callRT("sx_string", cg.globalString(s))
+		} else {
+			// Double-quoted: escapes + interpolation
+			s = preprocessor.ProcessEscapes(s)
+			if hasInterpolation(s) {
+				result = cg.compileInterpolatedString(s)
+			} else {
+				result = cg.callRT("sx_string", cg.globalString(s))
+			}
 		}
 	case p.Ident != nil:
 		switch *p.Ident {
@@ -224,6 +232,8 @@ var nativeOneArg = map[string]string{
 	"__native_read_file": "__native_read_file", "__native_file_exists": "__native_file_exists",
 	"__native_delete_file": "__native_delete_file", "__native_getenv": "__native_getenv",
 	"__native_exec": "__native_exec",
+	"__native_json_parse": "__native_json_parse", "__native_json_stringify": "__native_json_stringify",
+	"__native_json_pretty": "__native_json_pretty",
 }
 
 var nativeNoArg = map[string]string{
@@ -349,6 +359,44 @@ func (cg *CodeGen) compilePrint(fc *parser.FuncCall) llvmValue.Value {
 	return cg.callRT("sx_null")
 }
 
+// hasInterpolation checks if a string contains {identifier} patterns.
+// Returns false for strings like {"key": "value"} where the content isn't a valid identifier.
+func hasInterpolation(s string) bool {
+	i := 0
+	for i < len(s) {
+		if s[i] == '{' {
+			end := strings.IndexByte(s[i:], '}')
+			if end == -1 {
+				return false
+			}
+			name := strings.TrimSpace(s[i+1 : i+end])
+			if name != "" && isValidIdent(name) {
+				return true
+			}
+			i += end + 1
+		} else {
+			i++
+		}
+	}
+	return false
+}
+
+func isValidIdent(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if s[0] != '_' && !(s[0] >= 'a' && s[0] <= 'z') && !(s[0] >= 'A' && s[0] <= 'Z') {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 func (cg *CodeGen) compileInterpolatedString(s string) llvmValue.Value {
 	var parts []llvmValue.Value
 	i := 0
@@ -362,11 +410,17 @@ func (cg *CodeGen) compileInterpolatedString(s string) llvmValue.Value {
 				i++
 				continue
 			}
+			varName := strings.TrimSpace(s[i+1 : i+end])
+			if varName == "" || !isValidIdent(varName) {
+				// Not an interpolation — keep literal
+				current += s[i : i+end+1]
+				i += end + 1
+				continue
+			}
 			if current != "" {
 				parts = append(parts, cg.callRT("sx_string", cg.globalString(current)))
 				current = ""
 			}
-			varName := strings.TrimSpace(s[i+1 : i+end])
 			parts = append(parts, cg.callRT("sx_to_string", cg.getVar(varName)))
 			i += end + 1
 		} else {

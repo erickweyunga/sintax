@@ -120,6 +120,7 @@ void sx_list_set(SxValue *list, SxValue *index, SxValue *val);
 SxValue* sx_list_remove(SxValue *list, SxValue *index);
 
 // Dict operations
+SxDictBucket* sx_dict_find(SxDict *d, const char *key);
 SxValue* sx_dict_get(SxValue *dict, SxValue *key);
 void sx_dict_set(SxValue *dict, SxValue *key, SxValue *val);
 SxValue* sx_dict_keys(SxValue *dict);

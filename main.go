@@ -89,7 +89,7 @@ func checkCommand() {
 }
 
 func analyzeProgram(program *parser.Program, result preprocessor.Result, filename string, lines []string) []analyzer.Error {
-	return analyzer.Analyze(program, result.Imports, filename, lines, result.LineMap)
+	return analyzer.Analyze(program, result.Imports, filename, lines, result.LineMap, findStdlibDir())
 }
 
 func printErrors(errors []analyzer.Error) {

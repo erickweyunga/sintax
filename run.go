@@ -58,6 +58,7 @@ func runCompiledCommand() {
 	}
 
 	cg := codegen.New()
+	compileImports(cg, result.Imports)
 	llvmIR := cg.Generate(program)
 
 	irFile := binaryPath + ".ll"

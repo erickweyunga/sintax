@@ -5,7 +5,7 @@ import "github.com/alecthomas/participle/v2/lexer"
 // SintaxLexer defines the token rules for the Sintax language.
 var SintaxLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Number", Pattern: `\d+(\.\d+)?`},
-	{Name: "String", Pattern: `"(?:[^"\\]|\\.)*"`},
+	{Name: "String", Pattern: `"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'`},
 	{Name: "Print", Pattern: `>>`},
 	{Name: "Arrow", Pattern: `->`},
 	{Name: "Op", Pattern: `\*\*|==|!=|>=|<=|\+=|\-=|\*=|/=|[+\-*/<>%]`},
