@@ -42,10 +42,42 @@ func (e *Environment) GetType(name string) (string, bool) {
 	return t, ok
 }
 
-// Set binds a variable in the current scope.
-// If the variable has a type constraint, it enforces it.
+// Set updates a variable. If it exists in an outer scope, updates it there
+// (enabling mutable closures). Otherwise creates a new binding in current scope.
 func (e *Environment) Set(name string, val object.Object) {
+	if _, ok := e.store[name]; ok {
+		e.store[name] = val
+		return
+	}
+	if e.outer != nil {
+		if _, ok := e.outer.resolve(name); ok {
+			e.outer.setInPlace(name, val)
+			return
+		}
+	}
 	e.store[name] = val
+}
+
+// resolve checks if a variable exists anywhere in the scope chain.
+func (e *Environment) resolve(name string) (*Environment, bool) {
+	if _, ok := e.store[name]; ok {
+		return e, true
+	}
+	if e.outer != nil {
+		return e.outer.resolve(name)
+	}
+	return nil, false
+}
+
+// setInPlace updates a variable in the scope where it was defined.
+func (e *Environment) setInPlace(name string, val object.Object) {
+	if _, ok := e.store[name]; ok {
+		e.store[name] = val
+		return
+	}
+	if e.outer != nil {
+		e.outer.setInPlace(name, val)
+	}
 }
 
 // SetTyped binds a variable with a type constraint.
