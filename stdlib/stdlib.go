@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	sxjson "github.com/erickweyunga/sintax/stdlib/json"
 	sxmath "github.com/erickweyunga/sintax/stdlib/math"
 	sxos "github.com/erickweyunga/sintax/stdlib/os"
 	sxstring "github.com/erickweyunga/sintax/stdlib/string"
@@ -19,6 +20,7 @@ type FuncInfo = types.FuncInfo
 var Registry = map[string]*Module{}
 
 func init() {
+	Register(sxjson.Load())
 	Register(sxmath.Load())
 	Register(sxstring.Load())
 	Register(sxos.Load())
