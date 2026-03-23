@@ -191,41 +191,46 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	return cg.callRT("sx_null")
 }
 
+// Builtin mappings: Sintax name → C runtime name
+var oneArgBuiltins = map[string]string{
+	"type":   "sx_type",
+	"len":    "sx_len",
+	"keys":   "sx_dict_keys",
+	"values": "sx_dict_values",
+	"num":    "sx_to_number",
+	"str":    "sx_to_string",
+	"bool":   "sx_to_bool",
+}
+
+var twoArgBuiltins = map[string]string{
+	"pop": "sx_list_remove",
+	"has": "sx_dict_has",
+}
+
 func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
-	// Built-in function mapping to runtime calls
-	builtinMap := map[string]string{
-		"type":   "sx_type",
-		"len":    "sx_len",
-		"keys":   "sx_dict_keys",
-		"values": "sx_dict_values",
-		"num":    "sx_to_number",
-		"str":    "sx_to_string",
-		"bool":   "sx_to_bool",
+	// Single-arg builtins (name → runtime)
+	if rtName, ok := oneArgBuiltins[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]))
 	}
 
-	// Single-arg builtins
-	if rtName, ok := builtinMap[fc.Name]; ok {
-		val := cg.compileExpr(fc.Args[0])
-		return cg.callRT(rtName, val)
+	// Two-arg builtins (name → runtime)
+	if rtName, ok := twoArgBuiltins[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	}
 
+	// Special builtins (variable args or custom logic)
 	switch fc.Name {
 	case "print":
 		return cg.compilePrint(fc)
 	case "push":
 		list := cg.compileExpr(fc.Args[0])
-		item := cg.compileExpr(fc.Args[1])
-		cg.callRTVoid("sx_list_append", list, item)
+		cg.callRTVoid("sx_list_append", list, cg.compileExpr(fc.Args[1]))
 		return list
-	case "pop":
-		return cg.callRT("sx_list_remove", cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	case "range":
 		if len(fc.Args) == 1 {
 			return cg.callRT("sx_range", cg.callRT("sx_number", constant.NewFloat(types.Double, 0)), cg.compileExpr(fc.Args[0]))
 		}
 		return cg.callRT("sx_range", cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
-	case "has":
-		return cg.callRT("sx_dict_has", cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	case "input":
 		if len(fc.Args) > 0 {
 			return cg.callRT("sx_input", cg.compileExpr(fc.Args[0]))

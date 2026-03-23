@@ -69,54 +69,70 @@ func (cg *CodeGen) Generate(program *parser.Program) string {
 	return cg.mod.String()
 }
 
-// --- Runtime declarations ---
+// --- Runtime declarations (table-driven) ---
 
-func (cg *CodeGen) declareRuntime() {
-	cg.declareFunc("sx_number", sxValuePtr, types.Double)
-	cg.declareFunc("sx_string", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_bool", sxValuePtr, i32)
-	cg.declareFunc("sx_null", sxValuePtr)
-	cg.declareFunc("sx_list_new", sxValuePtr)
-	cg.declareFunc("sx_dict_new", sxValuePtr)
-	cg.declareFunc("sx_add", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_sub", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_mul", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_div", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_mod", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_pow", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_eq", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_neq", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_gt", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_lt", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_gte", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_lte", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_not", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_truthy", i32, sxValuePtr)
-	cg.declareFunc("sx_print", voidType, sxValuePtr)
-	cg.declareFunc("sx_list_append", voidType, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_list_remove", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_index", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_index_set", voidType, sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_in", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_dict_keys", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_dict_values", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_dict_has", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_len", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_type", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_range", sxValuePtr, sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_to_number", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_to_string", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_to_bool", sxValuePtr, sxValuePtr)
-	cg.declareFunc("sx_check_type", voidType, sxValuePtr, i32, sxValuePtr)
-	cg.declareFunc("sx_input", sxValuePtr, sxValuePtr)
+type rtDecl struct {
+	name   string
+	ret    types.Type
+	params []types.Type
 }
 
-func (cg *CodeGen) declareFunc(name string, retType types.Type, paramTypes ...types.Type) {
-	params := make([]*ir.Param, len(paramTypes))
-	for i, t := range paramTypes {
-		params[i] = ir.NewParam(fmt.Sprintf("p%d", i), t)
+// V = SxValue*, D = double, I = i32, void = void
+var runtimeDecls = []rtDecl{
+	// Constructors
+	{"sx_number", sxValuePtr, []types.Type{types.Double}},
+	{"sx_string", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_bool", sxValuePtr, []types.Type{i32}},
+	{"sx_null", sxValuePtr, nil},
+	{"sx_list_new", sxValuePtr, nil},
+	{"sx_dict_new", sxValuePtr, nil},
+	// Arithmetic
+	{"sx_add", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_sub", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_mul", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_div", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_mod", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_pow", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	// Comparison
+	{"sx_eq", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_neq", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_gt", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_lt", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_gte", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_lte", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	// Logical
+	{"sx_not", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_truthy", i32, []types.Type{sxValuePtr}},
+	// I/O
+	{"sx_print", voidType, []types.Type{sxValuePtr}},
+	{"sx_input", sxValuePtr, []types.Type{sxValuePtr}},
+	// Collections
+	{"sx_list_append", voidType, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_list_remove", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_index", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_index_set", voidType, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
+	{"sx_in", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_dict_keys", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_dict_values", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_dict_has", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	// Utilities
+	{"sx_len", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_type", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_range", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_to_number", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_to_string", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_to_bool", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_check_type", voidType, []types.Type{sxValuePtr, i32, sxValuePtr}},
+}
+
+func (cg *CodeGen) declareRuntime() {
+	for _, d := range runtimeDecls {
+		params := make([]*ir.Param, len(d.params))
+		for i, t := range d.params {
+			params[i] = ir.NewParam(fmt.Sprintf("p%d", i), t)
+		}
+		cg.rtFuncs[d.name] = cg.mod.NewFunc(d.name, d.ret, params...)
 	}
-	cg.rtFuncs[name] = cg.mod.NewFunc(name, retType, params...)
 }
 
 // --- Scope ---
@@ -210,19 +226,17 @@ func (cg *CodeGen) newBlock(prefix string) *ir.Block {
 	return cg.fn.NewBlock(fmt.Sprintf("%s.%d", prefix, cg.blockCounter))
 }
 
+var typeTagMap = map[string]int{
+	"num":  1, // SX_NUMBER
+	"str":  2, // SX_STRING
+	"bool": 3, // SX_BOOL
+	"list": 4, // SX_LIST
+	"dict": 5, // SX_DICT
+}
+
 func typeNameToTag(name string) int {
-	switch name {
-	case "num":
-		return 1
-	case "str":
-		return 2
-	case "bool":
-		return 3
-	case "list":
-		return 4
-	case "dict":
-		return 5
-	default:
-		return 0
+	if tag, ok := typeTagMap[name]; ok {
+		return tag
 	}
+	return 0
 }
