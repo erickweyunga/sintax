@@ -94,6 +94,8 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 	// Evaluate base value
 	var result object.Object
 	switch {
+	case p.Lambda != nil:
+		result = evalLambda(p.Lambda, env)
 	case p.IndexAccess != nil:
 		result = evalIndexAccess(p.IndexAccess, env)
 	case p.FuncCall != nil:
@@ -313,6 +315,27 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 	return result
 }
 
+// --- Lambda ---
+
+func evalLambda(l *parser.Lambda, env *Environment) object.Object {
+	params := make([]object.FuncParam, len(l.Params))
+	for i, name := range l.Params {
+		params[i] = object.FuncParam{Name: name}
+	}
+	// Wrap the expression as a return statement in a block
+	body := &parser.Block{
+		Statements: []*parser.Statement{
+			{ReturnStmt: &parser.ReturnStmt{Value: l.Body}},
+		},
+	}
+	return &object.FuncObj{
+		Name:   "<lambda>",
+		Params: params,
+		Body:   body,
+		Env:    env,
+	}
+}
+
 // --- Methods ---
 
 func evalMethod(obj object.Object, method string, args []object.Object) object.Object {
@@ -427,10 +450,94 @@ func evalListMethod(l *object.ListObj, method string, args []object.Object) obje
 			parts[i] = el.Inspect()
 		}
 		return &object.StringObj{Value: strings.Join(parts, sep)}
+	case "map":
+		if len(args) != 1 {
+			runtimeError("list.map() requires 1 argument (function)")
+		}
+		fn, ok := args[0].(*object.FuncObj)
+		if !ok {
+			runtimeError("list.map() argument must be a function")
+		}
+		return evalListMap(l, fn)
+	case "filter":
+		if len(args) != 1 {
+			runtimeError("list.filter() requires 1 argument (function)")
+		}
+		fn, ok := args[0].(*object.FuncObj)
+		if !ok {
+			runtimeError("list.filter() argument must be a function")
+		}
+		return evalListFilter(l, fn)
+	case "reduce":
+		if len(args) != 2 {
+			runtimeError("list.reduce() requires 2 arguments (function, initial)")
+		}
+		fn, ok := args[0].(*object.FuncObj)
+		if !ok {
+			runtimeError("list.reduce() first argument must be a function")
+		}
+		return evalListReduce(l, fn, args[1])
+	case "each":
+		if len(args) != 1 {
+			runtimeError("list.each() requires 1 argument (function)")
+		}
+		fn, ok := args[0].(*object.FuncObj)
+		if !ok {
+			runtimeError("list.each() argument must be a function")
+		}
+		return evalListEach(l, fn)
 	case "type":
 		return &object.StringObj{Value: "list"}
 	}
 	runtimeError("list has no method '%s'", method)
+	return object.Null
+}
+
+func callFuncObj(fn *object.FuncObj, args []object.Object) object.Object {
+	fnEnv := NewEnclosed(fn.Env.(*Environment))
+	for i, param := range fn.Params {
+		if i < len(args) {
+			fnEnv.Set(param.Name, args[i])
+		}
+	}
+	result := evalStatements(fn.Body.Statements, fnEnv)
+	if ret, ok := result.(*object.ReturnObj); ok {
+		return ret.Value
+	}
+	return result
+}
+
+func evalListMap(l *object.ListObj, fn *object.FuncObj) object.Object {
+	results := make([]object.Object, len(l.Elements))
+	for i, el := range l.Elements {
+		results[i] = callFuncObj(fn, []object.Object{el})
+	}
+	return &object.ListObj{Elements: results}
+}
+
+func evalListFilter(l *object.ListObj, fn *object.FuncObj) object.Object {
+	var results []object.Object
+	for _, el := range l.Elements {
+		result := callFuncObj(fn, []object.Object{el})
+		if object.IsTruthy(result) {
+			results = append(results, el)
+		}
+	}
+	return &object.ListObj{Elements: results}
+}
+
+func evalListReduce(l *object.ListObj, fn *object.FuncObj, initial object.Object) object.Object {
+	acc := initial
+	for _, el := range l.Elements {
+		acc = callFuncObj(fn, []object.Object{acc, el})
+	}
+	return acc
+}
+
+func evalListEach(l *object.ListObj, fn *object.FuncObj) object.Object {
+	for _, el := range l.Elements {
+		callFuncObj(fn, []object.Object{el})
+	}
 	return object.Null
 }
 

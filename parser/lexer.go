@@ -7,6 +7,7 @@ var SintaxLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Number", Pattern: `\d+(\.\d+)?`},
 	{Name: "String", Pattern: `"(?:[^"\\]|\\.)*"`},
 	{Name: "Print", Pattern: `>>`},
+	{Name: "Arrow", Pattern: `->`},
 	{Name: "Op", Pattern: `\*\*|==|!=|>=|<=|\+=|\-=|\*=|/=|[+\-*/<>%]`},
 	{Name: "Assign", Pattern: `=`},
 	{Name: "Punct", Pattern: `[{}()\[\],;:.]`},

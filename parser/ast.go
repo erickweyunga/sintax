@@ -176,7 +176,8 @@ type Unary struct {
 }
 
 type Primary struct {
-	IndexAccess *IndexAccess  `( @@`
+	Lambda      *Lambda       `( @@`
+	IndexAccess *IndexAccess  `| @@`
 	FuncCall    *FuncCall     `| @@`
 	DictLit     *DictLit      `| @@`
 	ListLit     *ListLit      `| @@`
@@ -185,6 +186,12 @@ type Primary struct {
 	Ident       *string       `| @Ident`
 	SubExpr     *Expr         `| "(" @@ ")" )`
 	Methods     []*MethodCall `@@*`
+}
+
+// Lambda: fn(params) -> expr
+type Lambda struct {
+	Params []string `"fn" "(" ( @Ident ( "," @Ident )* )? ")" "->"`
+	Body   *Expr    `@@`
 }
 
 // MethodCall: .name(args)
