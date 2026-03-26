@@ -3,7 +3,7 @@
 -- test: add(5, 3) == 8
 -- test: add(0, 0) == 0
 -- test: add(-1, 1) == 0
-fn (a, b) add:
+fn (num a, num b) num add:
     a + b
 
 x = add(5, 3)

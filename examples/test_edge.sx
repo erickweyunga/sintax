@@ -4,55 +4,55 @@ These test tricky patterns that often break languages.
 }--
 
 -- test: empty_fn() == 1
-fn () empty_fn:
+fn () num empty_fn:
     x = 1
 
 -- test: single_return() == 42
-fn () single_return:
+fn () num single_return:
     return 42
 
 -- test: nested_calls() == 6
-fn (a) double:
+fn (num a) num double:
     a * 2
-fn (a) triple:
+fn (num a) num triple:
     a * 3
-fn () nested_calls:
+fn () num nested_calls:
     double(triple(1))
 
 -- test: shadow() == "inner"
-fn () shadow:
+fn () str shadow:
     x = "outer"
-    fn () inner:
+    fn () str inner:
         x = "inner"
         return x
     return inner()
 
 -- test: closure_counter() == 3
-fn () make_counter:
+fn () fn make_counter:
     count = 0
-    fn () inc:
+    fn () num inc:
         count = count + 1
         return count
     return inc
 
-fn () closure_counter:
+fn () num closure_counter:
     counter = make_counter()
     counter()
     counter()
     return counter()
 
 -- test: recursive_sum(5) == 15
-fn (n) recursive_sum:
+fn (num n) num recursive_sum:
     if n <= 0:
         return 0
     return n + recursive_sum(n - 1)
 
 -- Mutual recursion: define both first, then test
-fn (n) is_odd_r:
+fn (num n) bool is_odd_r:
     if n == 0:
         return false
     return is_even_r(n - 1)
-fn (n) is_even_r:
+fn (num n) bool is_even_r:
     if n == 0:
         return true
     return is_odd_r(n - 1)
@@ -62,85 +62,85 @@ fn (n) is_even_r:
 -- test: is_odd_r(3) == true
 
 -- test: empty_list_ops() == 0
-fn () empty_list_ops:
+fn () num empty_list_ops:
     items = []
     return len(items)
 
 -- test: nested_list() == 3
-fn () nested_list:
+fn () num nested_list:
     matrix = [[1, 2], [3, 4]]
     row = matrix[1]
     return row[0]
 
 -- test: dict_in_list() == "hello"
-fn () dict_in_list:
+fn () str dict_in_list:
     items = [{"key": "hello"}, {"key": "world"}]
     first = items[0]
     return first["key"]
 
 -- test: list_in_dict() == 2
-fn () list_in_dict:
+fn () num list_in_dict:
     d = {"nums": [1, 2, 3]}
     nums = d["nums"]
     return nums[1]
 
 -- test: string_escape() == 3
-fn () string_escape:
+fn () num string_escape:
     s = "a\tb"
     return len(s)
 
 -- test: negative_math() == -15
-fn () negative_math:
+fn () num negative_math:
     return -5 * 3
 
 -- test: chained_compare() == true
-fn () chained_compare:
+fn () bool chained_compare:
     x = 5
     return x > 3 and x < 10
 
 -- test: type_coerce() == "42"
-fn () type_coerce:
+fn () str type_coerce:
     return str(42)
 
 -- test: bool_logic() == true
-fn () bool_logic:
+fn () bool bool_logic:
     return not false and (true or false)
 
 -- test: modulo_negative() == -1
-fn () modulo_negative:
+fn () num modulo_negative:
     return -7 % 3
 
 -- test: power_chain() == 512
-fn () power_chain:
+fn () num power_chain:
     return 2 ** 9
 
 -- test: string_interp() == "x is 10"
-fn () string_interp:
+fn () str string_interp:
     x = 10
     return "x is {x}"
 
 -- test: empty_string() == true
-fn () empty_string:
+fn () bool empty_string:
     return "" == ""
 
 -- test: null_check() == true
-fn () null_check:
+fn () bool null_check:
     return null == null
 
 -- test: list_membership() == true
-fn () list_membership:
+fn () bool list_membership:
     return 3 in [1, 2, 3, 4, 5]
 
 -- test: dict_membership() == true
-fn () dict_membership:
+fn () bool dict_membership:
     d = {"a": 1, "b": 2}
     return "a" in d
 
 -- test: string_membership() == true
-fn () string_membership:
+fn () bool string_membership:
     return "world" in "hello world"
 
-fn (x) categorize:
+fn (num x) str categorize:
     match x:
         case 1:
             return "one"
@@ -154,19 +154,19 @@ fn (x) categorize:
 -- test: categorize(99) == "other"
 
 -- test: error_handling() == 0
-fn () error_handling:
+fn () num error_handling:
     result = error("something failed")
     if err(result):
         return 0
     return 1
 
 -- test: error_msg() == "error: oops"
-fn () error_msg:
+fn () str error_msg:
     e = error("oops")
     return str(e)
 
 -- test: compound_all() == 10
-fn () compound_all:
+fn () num compound_all:
     x = 20
     x += 5
     x -= 10
@@ -175,7 +175,7 @@ fn () compound_all:
     return x
 
 -- test: for_break() == 3
-fn () for_break:
+fn () num for_break:
     total = 0
     for n in range(100):
         if n == 3:
@@ -184,7 +184,7 @@ fn () for_break:
     return total
 
 -- test: for_continue() == 5
-fn () for_continue:
+fn () num for_continue:
     total = 0
     for n in range(10):
         if n % 2 == 0:
@@ -193,7 +193,7 @@ fn () for_continue:
     return total
 
 -- test: while_break() == 5
-fn () while_break:
+fn () num while_break:
     i = 0
     while true:
         if i == 5:
@@ -202,7 +202,7 @@ fn () while_break:
     return i
 
 -- test: deeply_nested() == true
-fn () deeply_nested:
+fn () bool deeply_nested:
     if true:
         if true:
             if true:
@@ -210,7 +210,7 @@ fn () deeply_nested:
     return false
 
 -- test: large_list() == 1000
-fn () large_list:
+fn () num large_list:
     items = []
     i = 0
     while i < 1000:
@@ -219,13 +219,13 @@ fn () large_list:
     return len(items)
 
 -- test: dict_overwrite() == "new"
-fn () dict_overwrite:
+fn () str dict_overwrite:
     d = {"key": "old"}
     d["key"] = "new"
     return d["key"]
 
 -- test: multiline_expr() == 15
-fn () multiline_expr:
+fn () num multiline_expr:
     a = 1 + 2 + 3
     b = a + 4 + 5
     return b

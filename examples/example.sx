@@ -2,11 +2,11 @@ use "std/math"
 use "std/json"
 use "std/string"
 
-fn () example:
+fn () void example:
     result = math/sqrt(16)
     >> result
 
-fn () json_example:
+fn () void json_example:
     json_var = '{"name": "John", "age": 30}'
     data = json/parse(json_var)
     >> json/pretty(data)

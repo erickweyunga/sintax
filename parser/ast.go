@@ -30,8 +30,8 @@ type Statement struct {
 type FuncDef struct {
 	Pub        bool     `@"pub"?`
 	Params     []*Param `"fn" "(" ( @@ ( "," @@ )* )? ")"`
-	ReturnType *string  `( @( "num" | "str" | "bool" | "list" | "dict" | "void" )`
-	MoreTypes  []string `  ( "|" @( "num" | "str" | "bool" | "list" | "dict" ) )* )?`
+	ReturnType *string  `( @( "num" | "str" | "bool" | "list" | "dict" | "fn" | "void" )`
+	MoreTypes  []string `  ( "|" @( "num" | "str" | "bool" | "list" | "dict" | "fn" ) )* )?`
 	Name       string   `@Ident`
 	Body       *Block   `@@`
 }

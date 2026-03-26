@@ -91,9 +91,11 @@ type Analyzer struct {
 	lines   []string
 	lineMap []int
 
-	errors []Error
-	inLoop int  // nesting depth of loops
-	inFunc bool // inside a function body?
+	errors             []Error
+	inLoop             int      // nesting depth of loops
+	inFunc             bool     // inside a function body?
+	currentFuncName    string   // name of the function being checked
+	currentReturnTypes []string // declared return types of current function
 
 	// Known stdlib module names (discovered from filesystem)
 	stdlibModules map[string]bool
@@ -621,6 +623,12 @@ func (a *Analyzer) checkStatement(stmt *parser.Statement) {
 }
 
 func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
+	// Enforce return type declaration
+	retTypes := fd.ReturnTypes()
+	if len(retTypes) == 0 {
+		a.addError(line, "Function '%s' must have a return type (use 'void' if it returns nothing)", fd.Name)
+	}
+
 	// Check for duplicate parameter names
 	seen := make(map[string]bool)
 	for _, p := range fd.Params {
@@ -628,6 +636,13 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 			a.addError(line, "Duplicate parameter '%s' in function '%s'", p.Name, fd.Name)
 		}
 		seen[p.Name] = true
+	}
+
+	// Enforce typed parameters
+	for _, p := range fd.Params {
+		if p.Type == nil {
+			a.addError(line, "Parameter '%s' in function '%s' must have a type", p.Name, fd.Name)
+		}
 	}
 
 	// Update function info with line
@@ -640,7 +655,11 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 
 	// Check body in a new scope
 	prevInFunc := a.inFunc
+	prevFuncName := a.currentFuncName
+	prevReturnTypes := a.currentReturnTypes
 	a.inFunc = true
+	a.currentFuncName = fd.Name
+	a.currentReturnTypes = retTypes
 	a.pushScope()
 
 	// Define parameters in the function scope
@@ -650,7 +669,6 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 			typ = *p.Type
 		}
 		a.define(p.Name, typ, line)
-		// Mark params as used (they're provided by caller)
 		a.scopes[len(a.scopes)-1][p.Name].Used = true
 	}
 
@@ -677,6 +695,8 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 
 	a.popScope()
 	a.inFunc = prevInFunc
+	a.currentFuncName = prevFuncName
+	a.currentReturnTypes = prevReturnTypes
 }
 
 // checkStatementsWithReachability checks statements and detects unreachable code.
@@ -825,6 +845,16 @@ func (a *Analyzer) checkReturnStmt(ret *parser.ReturnStmt, line int) {
 		a.addError(line, "'return' outside of function")
 	}
 	a.checkExpr(ret.Value, line)
+
+	// Check return type matches declared types
+	if len(a.currentReturnTypes) > 0 && a.currentReturnTypes[0] != "void" {
+		if valType := a.inferExprType(ret.Value); valType != "" {
+			if !a.typeMatchesUnion(valType, a.currentReturnTypes) {
+				a.addError(line, "Function '%s' returns %s, expected %s",
+					a.currentFuncName, valType, strings.Join(a.currentReturnTypes, " | "))
+			}
+		}
+	}
 }
 
 func (a *Analyzer) checkTypedAssign(ta *parser.TypedAssign, line int) {
@@ -873,15 +903,28 @@ func (a *Analyzer) checkCompoundAssign(ca *parser.CompoundAssign, line int) {
 func (a *Analyzer) checkAssignment(assign *parser.Assignment, line int) {
 	a.checkExpr(assign.Value, line)
 
+	valType := a.inferExprType(assign.Value)
+
 	if existingType := a.getVarType(assign.Name); existingType != "" && existingType != "fn" {
-		if valType := a.inferExprType(assign.Value); valType != "" && valType != existingType {
+		if valType != "" && valType != existingType {
 			a.addError(line, "Type mismatch: '%s' is %s, cannot assign %s", assign.Name, existingType, valType)
 		}
 	}
 
 	if !a.isDefined(assign.Name) {
-		a.define(assign.Name, "", line)
+		// Infer type from the assigned value
+		a.define(assign.Name, valType, line)
 	}
+}
+
+// typeMatchesUnion checks if a type matches any type in a union list.
+func (a *Analyzer) typeMatchesUnion(valType string, types []string) bool {
+	for _, t := range types {
+		if valType == t {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Analyzer) checkExprStmt(es *parser.ExprStmt, line int) {
@@ -1227,6 +1270,15 @@ func (a *Analyzer) inferPrimaryType(p *parser.Primary) string {
 	if p == nil {
 		return ""
 	}
+
+	// If there are index suffixes ([i] or ["key"]), the result type is
+	// unknown since list elements and dict values can be any type.
+	for _, s := range p.Suffix {
+		if s.Index != nil {
+			return "" // indexing produces unknown type
+		}
+	}
+
 	switch {
 	case p.Number != nil:
 		return "num"
@@ -1246,7 +1298,6 @@ func (a *Analyzer) inferPrimaryType(p *parser.Primary) string {
 		if name == "null" {
 			return "null"
 		}
-		// Check variable type
 		if v := a.findVar(name); v != nil && v.Type != "" {
 			return v.Type
 		}

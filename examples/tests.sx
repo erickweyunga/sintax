@@ -64,13 +64,13 @@ name2 = "Erick"
 
 >> "=== 8. FUNCTIONS ==="
 -- Untyped
-fn (a, b) add:
+fn (num a, num b) num add:
     a + b
 
 >> add(5, 3)
 
 -- Implicit return
-fn (n) square:
+fn (num n) num square:
     n * n
 
 >> square(7)

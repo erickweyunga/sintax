@@ -6,13 +6,13 @@ Run with: sintax test examples/test_core.sx
 -- test: add(1, 2) == 3
 -- test: add(-5, 5) == 0
 -- test: add(0.5, 0.5) == 1
-fn (a, b) add:
+fn (num a, num b) num add:
     a + b
 
 -- test: square(5) == 25
 -- test: square(-3) == 9
 -- test: square(0) == 0
-fn (n) square:
+fn (num n) num square:
     n * n
 
 -- test: factorial(0) == 1
