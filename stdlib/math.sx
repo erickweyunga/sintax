@@ -2,107 +2,107 @@
 -- Native functions call C math.h, pure functions are Sintax.
 
 -- Native wrappers (call C runtime)
-fn (num n) num sqrt:
+pub fn (num n) num sqrt:
     return __native_sqrt(n)
 
-fn (num n) num sin:
+pub fn (num n) num sin:
     return __native_sin(n)
 
-fn (num n) num cos:
+pub fn (num n) num cos:
     return __native_cos(n)
 
-fn (num n) num tan:
+pub fn (num n) num tan:
     return __native_tan(n)
 
-fn (num n) num asin:
+pub fn (num n) num asin:
     return __native_asin(n)
 
-fn (num n) num acos:
+pub fn (num n) num acos:
     return __native_acos(n)
 
-fn (num n) num atan:
+pub fn (num n) num atan:
     return __native_atan(n)
 
-fn (num n) num log:
+pub fn (num n) num log:
     return __native_log(n)
 
-fn (num n) num log2:
+pub fn (num n) num log2:
     return __native_log2(n)
 
-fn (num n) num log10:
+pub fn (num n) num log10:
     return __native_log10(n)
 
-fn (num n) num exp:
+pub fn (num n) num exp:
     return __native_exp(n)
 
-fn (num n) num floor:
+pub fn (num n) num floor:
     return __native_floor(n)
 
-fn (num n) num ceil:
+pub fn (num n) num ceil:
     return __native_ceil(n)
 
-fn (num n) num round:
+pub fn (num n) num round:
     return __native_round(n)
 
-fn (num n) num cbrt:
+pub fn (num n) num cbrt:
     return __native_cbrt(n)
 
-fn (num a, num b) num pow:
+pub fn (num a, num b) num pow:
     return __native_pow(a, b)
 
-fn () num random:
+pub fn () num random:
     return __native_random()
 
 -- Pure Sintax (no native needed)
 
-fn () num pi:
+pub fn () num pi:
     return 3.141592653589793
 
-fn () num e:
+pub fn () num e:
     return 2.718281828459045
 
-fn (num n) num abs:
+pub fn (num n) num abs:
     if n < 0:
         return -n
     return n
 
-fn (num n) num sign:
+pub fn (num n) num sign:
     if n > 0:
         return 1
     if n < 0:
         return -1
     return 0
 
-fn (num a, num b) num min:
+pub fn (num a, num b) num min:
     if a < b:
         return a
     return b
 
-fn (num a, num b) num max:
+pub fn (num a, num b) num max:
     if a > b:
         return a
     return b
 
-fn (num n, num lo, num hi) num clamp:
+pub fn (num n, num lo, num hi) num clamp:
     if n < lo:
         return lo
     if n > hi:
         return hi
     return n
 
-fn (num a, num b) num random_between:
+pub fn (num a, num b) num random_between:
     return a + random() * (b - a)
 
-fn (num degrees) num radians:
+pub fn (num degrees) num radians:
     return degrees * 3.141592653589793 / 180
 
-fn (num radians) num degrees:
+pub fn (num radians) num degrees:
     return radians * 180 / 3.141592653589793
 
-fn (num n) num factorial:
+pub fn (num n) num factorial:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
 
-fn (num n, num total) num percent:
+pub fn (num n, num total) num percent:
     return (n / total) * 100

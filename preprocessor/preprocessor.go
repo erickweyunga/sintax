@@ -8,7 +8,25 @@ import (
 // Import represents a use directive.
 type Import struct {
 	Module   string // e.g. "math"
-	Function string // e.g. "sqrt" or "*" or ""
+	Function string // e.g. "sqrt" or ""
+}
+
+// RewriteLine rewrites namespace calls in a line using the given imports.
+// This is used by the test runner to rewrite test expressions.
+func RewriteLine(line string, imports []Import) string {
+	for _, imp := range imports {
+		if imp.Function == "" {
+			modName := imp.Module
+			if strings.HasPrefix(modName, "std/") {
+				modName = strings.TrimPrefix(modName, "std/")
+			}
+			if strings.HasSuffix(modName, ".sx") {
+				modName = strings.TrimSuffix(filepath.Base(modName), ".sx")
+			}
+			line = rewriteNamespaceCalls(line, modName)
+		}
+	}
+	return line
 }
 
 // Result holds the preprocessed source and a line mapping back to the original.
@@ -121,7 +139,6 @@ func Process(source string) Result {
 
 // parseUse parses a use directive.
 // use "math"       → Module: "math", Function: ""
-// use "math/*"     → Module: "math", Function: "*"
 // use "math/sqrt"  → Module: "math", Function: "sqrt"
 // rewriteNamespaceCalls replaces module/func( with module__func( in a line.
 func rewriteNamespaceCalls(line, module string) string {
@@ -148,7 +165,6 @@ func parseUse(line string) *Import {
 
 	// Handle std/ prefix: use "std/math" → Module: "std/math"
 	// Handle std/math/sqrt → Module: "std/math", Function: "sqrt"
-	// Handle std/math/* → Module: "std/math", Function: "*"
 	if strings.HasPrefix(path, "std/") {
 		rest := strings.TrimPrefix(path, "std/")
 		if idx := strings.Index(rest, "/"); idx != -1 {
@@ -160,7 +176,7 @@ func parseUse(line string) *Import {
 		return &Import{Module: path}
 	}
 
-	// User modules: use "file.sx/func" or "file.sx/*"
+	// User modules: use "file.sx/func"
 	if idx := strings.Index(path, "/"); idx != -1 {
 		return &Import{
 			Module:   path[:idx],

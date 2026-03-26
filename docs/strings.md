@@ -6,7 +6,6 @@ String manipulation functions.
 
 ```
 use "std/string"           -- namespaced: string/upper(...)
-use "std/string/*"         -- wildcard: upper(...)
 use "std/string/upper"     -- specific: upper(...)
 ```
 
@@ -17,8 +16,8 @@ use "std/string/upper"     -- specific: upper(...)
 Convert to uppercase.
 
 ```
-use "std/string/*"
->> upper("hello")    -- HELLO
+use "std/string"
+>> string/upper("hello")    -- HELLO
 ```
 
 ### lower(str) -> str
@@ -26,7 +25,7 @@ use "std/string/*"
 Convert to lowercase.
 
 ```
->> lower("HELLO")    -- hello
+>> string/lower("HELLO")    -- hello
 ```
 
 ### split(str, str) -> list
@@ -34,8 +33,8 @@ Convert to lowercase.
 Split a string by a separator.
 
 ```
->> split("a,b,c", ",")    -- ["a", "b", "c"]
->> split("hello world", " ")  -- ["hello", "world"]
+>> string/split("a,b,c", ",")    -- ["a", "b", "c"]
+>> string/split("hello world", " ")  -- ["hello", "world"]
 ```
 
 ### replace(str, str, str) -> str
@@ -43,7 +42,7 @@ Split a string by a separator.
 Replace all occurrences of a substring.
 
 ```
->> replace("hello world", "world", "Sintax")    -- hello Sintax
+>> string/replace("hello world", "world", "Sintax")    -- hello Sintax
 ```
 
 ### length(str) -> num
@@ -51,7 +50,7 @@ Replace all occurrences of a substring.
 Get the length of a string.
 
 ```
->> length("hello")    -- 5
+>> string/length("hello")    -- 5
 ```
 
 ### contains(str, str) -> bool
@@ -59,8 +58,8 @@ Get the length of a string.
 Check if a string contains a substring.
 
 ```
->> contains("hello world", "world")    -- true
->> contains("hello", "xyz")            -- false
+>> string/contains("hello world", "world")    -- true
+>> string/contains("hello", "xyz")            -- false
 ```
 
 ### starts_with(str, str) -> bool
@@ -68,8 +67,8 @@ Check if a string contains a substring.
 Check if a string starts with a prefix.
 
 ```
->> starts_with("hello", "hel")    -- true
->> starts_with("hello", "world")  -- false
+>> string/starts_with("hello", "hel")    -- true
+>> string/starts_with("hello", "world")  -- false
 ```
 
 ### ends_with(str, str) -> bool
@@ -77,8 +76,8 @@ Check if a string starts with a prefix.
 Check if a string ends with a suffix.
 
 ```
->> ends_with("hello", "llo")     -- true
->> ends_with("hello", "world")   -- false
+>> string/ends_with("hello", "llo")     -- true
+>> string/ends_with("hello", "world")   -- false
 ```
 
 ### join(list, str) -> str
@@ -86,8 +85,8 @@ Check if a string ends with a suffix.
 Join a list of values into a string with a separator.
 
 ```
->> join(["a", "b", "c"], "-")    -- a-b-c
->> join([1, 2, 3], ", ")          -- 1, 2, 3
+>> string/join(["a", "b", "c"], "-")    -- a-b-c
+>> string/join([1, 2, 3], ", ")          -- 1, 2, 3
 ```
 
 ## String Methods

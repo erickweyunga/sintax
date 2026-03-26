@@ -82,8 +82,6 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 	switch {
 	case p.Lambda != nil:
 		result = evalLambda(p.Lambda, env)
-	case p.IndexAccess != nil:
-		result = evalIndexAccess(p.IndexAccess, env)
 	case p.FuncCall != nil:
 		result = evalFuncCall(p.FuncCall, env)
 	case p.DictLit != nil:
@@ -96,10 +94,8 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 		raw := *p.String
 		s := raw[1 : len(raw)-1]
 		if raw[0] == '\'' {
-			// Single-quoted: raw string, no interpolation, only \' escape
 			s = strings.ReplaceAll(s, "\\'", "'")
 		} else {
-			// Double-quoted: escapes + interpolation
 			s = preprocessor.ProcessEscapes(s)
 			s = interpolateString(s, env)
 		}
@@ -125,25 +121,24 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 		result = object.Null
 	}
 
-	// Apply method chain: value.method(args).method(args)...
-	for _, mc := range p.Methods {
-		args := make([]object.Object, len(mc.Args))
-		for i, arg := range mc.Args {
-			args[i] = evalExpr(arg, env)
+	// Apply suffix chain: [index], .method(args), chained
+	for _, s := range p.Suffix {
+		if s.Index != nil {
+			result = evalIndexOn(result, evalExpr(s.Index.Index, env))
+		} else if s.Method != nil {
+			args := make([]object.Object, len(s.Method.Args))
+			for i, arg := range s.Method.Args {
+				args[i] = evalExpr(arg, env)
+			}
+			result = evalMethod(result, s.Method.Name, args)
 		}
-		result = evalMethod(result, mc.Name, args)
 	}
 
 	return result
 }
 
-func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
-	obj, ok := env.Get(ia.Name)
-	if !ok {
-		runtimeError("Undefined name: '%s'", ia.Name)
-	}
-	idx := evalExpr(ia.Index, env)
-
+// evalIndexOn indexes into any collection value.
+func evalIndexOn(obj object.Object, idx object.Object) object.Object {
 	switch o := obj.(type) {
 	case *object.DictObj:
 		key, ok := idx.(*object.StringObj)
@@ -161,8 +156,11 @@ func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 			runtimeError("Index must be a num")
 		}
 		i := int(idxNum.Value)
+		if i < 0 {
+			i += len(o.Elements)
+		}
 		if i < 0 || i >= len(o.Elements) {
-			runtimeError("Index %d out of range (length %d)", i, len(o.Elements))
+			runtimeError("Index %d out of range (length %d)", int(idxNum.Value), len(o.Elements))
 		}
 		return o.Elements[i]
 	case *object.StringObj:
@@ -171,12 +169,15 @@ func evalIndexAccess(ia *parser.IndexAccess, env *Environment) object.Object {
 			runtimeError("Index must be a num")
 		}
 		i := int(idxNum.Value)
+		if i < 0 {
+			i += len(o.Value)
+		}
 		if i < 0 || i >= len(o.Value) {
-			runtimeError("Index %d out of range (length %d)", i, len(o.Value))
+			runtimeError("Index %d out of range (length %d)", int(idxNum.Value), len(o.Value))
 		}
 		return &object.StringObj{Value: string(o.Value[i])}
 	default:
-		runtimeError("'%s' is not indexable", ia.Name)
+		runtimeError("Cannot index into %s", object.TypeName(obj))
 	}
 	return object.Null
 }
@@ -244,7 +245,7 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 	if result, ok := callUserModule(fc.Name, fc.Args, env); ok {
 		return result
 	}
-	if result, ok := callWildcardModule(fc.Name, fc.Args, env); ok {
+	if result, ok := callSpecificImport(fc.Name, fc.Args, env); ok {
 		return result
 	}
 

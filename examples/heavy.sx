@@ -3,7 +3,7 @@ Heavy performance test.
 Tests: arithmetic, recursion, string ops, list ops, dict ops, nested loops.
 }--
 
-use "std/math/*"
+use "std/math"
 
 -- 1. Arithmetic: sum 1 to 1 million
 i = 0
@@ -67,14 +67,14 @@ while i < 1000:
 i = 0
 total2 = 0
 while i < 100000:
-    total2 += sqrt(num(i))
+    total2 += math/sqrt(num(i))
     i += 1
 >> "7. 100K sqrt:"
->> floor(total2)
+>> math/floor(total2)
 
 -- 8. Factorial(20)
 >> "8. Factorial(20):"
->> factorial(20)
+>> math/factorial(20)
 
 -- 9. List sort (bubble sort 1000 items)
 fn (list arr) list bubble_sort:
@@ -102,12 +102,12 @@ sorted = bubble_sort(unsorted)
 >> sorted[999]
 
 -- 10. JSON round-trip 1K times
-use "std/json/*"
+use "std/json"
 data = {"name": "Sintax", "version": 1, "features": ["fast", "typed", "compiled"]}
 i = 0
 while i < 1000:
-    text = stringify(data)
-    parsed = parse(text)
+    text = json/stringify(data)
+    parsed = json/parse(text)
     i += 1
 >> "10. JSON 1K round-trips:"
 >> parsed["name"]

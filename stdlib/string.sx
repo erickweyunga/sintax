@@ -1,47 +1,61 @@
 -- String standard library
 
-fn (str s) str upper:
+-- Case conversion
+pub fn (str s) str upper:
     return __native_upper(s)
 
-fn (str s) str lower:
+pub fn (str s) str lower:
     return __native_lower(s)
 
-fn (str s, str sep) list split:
-    return __native_split(s, sep)
+-- Search
+pub fn (str s, str sub) num index_of:
+    return __native_index_of(s, sub)
 
-fn (str s, str old, str new) str replace:
-    return __native_replace(s, old, new)
-
--- Pure Sintax
-
-fn (str s) num length:
-    return len(s)
-
-fn (str s, str sub) bool contains:
+pub fn (str s, str sub) bool contains:
     return sub in s
 
-fn (str s, str prefix) bool starts_with:
+pub fn (str s, str prefix) bool starts_with:
     if len(prefix) > len(s):
         return false
-    i = 0
-    while i < len(prefix):
-        if s[i] != prefix[i]:
-            return false
-        i += 1
-    return true
+    return __native_slice(s, 0, len(prefix)) == prefix
 
-fn (str s, str suffix) bool ends_with:
+pub fn (str s, str suffix) bool ends_with:
     if len(suffix) > len(s):
         return false
-    offset = len(s) - len(suffix)
-    i = 0
-    while i < len(suffix):
-        if s[offset + i] != suffix[i]:
-            return false
-        i += 1
-    return true
+    return __native_slice(s, len(s) - len(suffix), len(s)) == suffix
 
-fn (list items, str sep) str join:
+-- Extraction
+pub fn (str s, num start, num end) str slice:
+    return __native_slice(s, start, end)
+
+pub fn (str s) num char_code:
+    return __native_char_code(s)
+
+pub fn (num code) str from_char_code:
+    return __native_from_char_code(code)
+
+-- Transformation
+pub fn (str s, str sep) list split:
+    return __native_split(s, sep)
+
+pub fn (str s, str old, str new) str replace:
+    return __native_replace(s, old, new)
+
+pub fn (str s) str trim:
+    return __native_trim(s)
+
+pub fn (str s) str reverse:
+    return __native_str_reverse(s)
+
+pub fn (str s, num n) str repeat:
+    return __native_str_repeat(s, n)
+
+-- Measurement
+pub fn (str s) num length:
+    return len(s)
+
+-- Joining
+pub fn (list items, str sep) str join:
     result = ""
     i = 0
     while i < len(items):

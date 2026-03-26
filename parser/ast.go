@@ -12,6 +12,7 @@ type Statement struct {
 	Pos         lexer.Position
 	FuncDef     *FuncDef     `( @@`
 	IfStmt      *IfStmt      `| @@`
+	CatchStmt   *CatchStmt   `| @@`
 	SwitchStmt  *SwitchStmt  `| @@`
 	WhileStmt   *WhileStmt   `| @@`
 	ForStmt     *ForStmt     `| @@`
@@ -24,11 +25,9 @@ type Statement struct {
 	ExprStmt    *ExprStmt    `| @@ )`
 }
 
-// FuncDef defines a function: fn (params) [returnType] name: body
-// Supports both typed and untyped params:
-//   fn (num a, str b) num add:
-//   fn (a, b) add:
+// FuncDef defines a function: [pub] fn (params) [returnType] name: body
 type FuncDef struct {
+	Pub        bool     `@"pub"?`
 	Params     []*Param `"fn" "(" ( @@ ( "," @@ )* )? ")"`
 	ReturnType *string  `@( "num" | "str" | "bool" | "list" | "dict" )?`
 	Name       string   `@Ident`
@@ -51,6 +50,14 @@ type IfStmt struct {
 	Condition *Expr  `"if" @@`
 	Body      *Block `@@`
 	Else      *Block `( "else" @@ )?`
+}
+
+// CatchStmt: catch name = expr: body
+// Evaluates expr, assigns to name. If the value is an error, runs body.
+type CatchStmt struct {
+	Name  string `"catch" @Ident "="`
+	Value *Expr  `@@`
+	Body  *Block `@@`
 }
 
 // PrintStmt: >> expr;
@@ -96,11 +103,11 @@ type TypedAssign struct {
 	Value *Expr  `@@ ";"`
 }
 
-// IndexAssign: name[index] = value;
+// IndexAssign: name[index] = value; or name[i][j] = value;
 type IndexAssign struct {
-	Name  string `@Ident`
-	Index *Expr  `"[" @@ "]" "="`
-	Value *Expr  `@@ ";"`
+	Name    string      `@Ident`
+	Indices []*IndexOp  `@@+ "="`
+	Value   *Expr       `@@ ";"`
 }
 
 // CompoundAssign: name += value; name -= value; etc.
@@ -175,17 +182,29 @@ type Unary struct {
 	Primary *Primary `| @@ )`
 }
 
+// Primary is the base expression. After parsing the base value,
+// a chain of suffix operations (indexing and method calls) is applied.
 type Primary struct {
-	Lambda      *Lambda       `( @@`
-	IndexAccess *IndexAccess  `| @@`
-	FuncCall    *FuncCall     `| @@`
-	DictLit     *DictLit      `| @@`
-	ListLit     *ListLit      `| @@`
-	Number      *float64      `| @Number`
-	String      *string       `| @String`
-	Ident       *string       `| @Ident`
-	SubExpr     *Expr         `| "(" @@ ")" )`
-	Methods     []*MethodCall `@@*`
+	Lambda   *Lambda    `( @@`
+	FuncCall *FuncCall  `| @@`
+	DictLit  *DictLit   `| @@`
+	ListLit  *ListLit   `| @@`
+	Number   *float64   `| @Number`
+	String   *string    `| @String`
+	Ident    *string    `| @Ident`
+	SubExpr  *Expr      `| "(" @@ ")" )`
+	Suffix   []*Suffix  `@@*`
+}
+
+// Suffix is a postfix operation: either [index] or .method(args).
+type Suffix struct {
+	Index  *IndexOp    `( @@`
+	Method *MethodCall `| @@ )`
+}
+
+// IndexOp: [expr]
+type IndexOp struct {
+	Index *Expr `"[" @@ "]"`
 }
 
 // Lambda: fn(params) -> expr
@@ -198,12 +217,6 @@ type Lambda struct {
 type MethodCall struct {
 	Name string  `"." @Ident "("`
 	Args []*Expr `( @@ ( "," @@ )* )? ")"`
-}
-
-// IndexAccess: name[index]
-type IndexAccess struct {
-	Name  string `@Ident`
-	Index *Expr  `"[" @@ "]"`
 }
 
 // FuncCall: name(args)

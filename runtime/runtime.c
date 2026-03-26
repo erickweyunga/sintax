@@ -565,6 +565,7 @@ SxValue* sx_list_get(SxValue *list, SxValue *index) {
     if (list->type != SX_LIST) sx_error("not a list");
     if (index->type != SX_NUMBER) sx_error("Index must be a num");
     int i = (int)index->number;
+    if (i < 0) i += list->list.len;
     if (i < 0 || i >= list->list.len) sx_error("Index out of range");
     return list->list.items[i];
 }
@@ -573,6 +574,7 @@ void sx_list_set(SxValue *list, SxValue *index, SxValue *val) {
     if (list->type != SX_LIST) sx_error("not a list");
     if (index->type != SX_NUMBER) sx_error("Index must be a num");
     int i = (int)index->number;
+    if (i < 0) i += list->list.len;
     if (i < 0 || i >= list->list.len) sx_error("Index out of range");
     list->list.items[i] = val;
 }
@@ -656,8 +658,10 @@ SxValue* sx_index(SxValue *collection, SxValue *idx) {
         case SX_DICT: return sx_dict_get(collection, idx);
         case SX_STRING: {
             if (idx->type != SX_NUMBER) sx_error("Index must be a num");
+            int slen = (int)strlen(collection->string);
             int i = (int)idx->number;
-            if (i < 0 || i >= (int)strlen(collection->string)) sx_error("Index out of range");
+            if (i < 0) i += slen;
+            if (i < 0 || i >= slen) sx_error("Index out of range");
             char buf[2] = {collection->string[i], '\0'};
             return sx_string(buf);
         }

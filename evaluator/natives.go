@@ -38,10 +38,24 @@ func init() {
 		"__native_pow":    nativeMath2(math.Pow),
 		"__native_random": nativeRandom,
 		// String
-		"__native_upper":   nativeUpper,
-		"__native_lower":   nativeLower,
-		"__native_split":   nativeSplit,
-		"__native_replace": nativeReplace,
+		"__native_upper":          nativeUpper,
+		"__native_lower":          nativeLower,
+		"__native_split":          nativeSplit,
+		"__native_replace":        nativeReplace,
+		"__native_trim":           nativeTrim,
+		"__native_char_code":      nativeCharCode,
+		"__native_from_char_code": nativeFromCharCode,
+		"__native_str_reverse":    nativeStrReverse,
+		"__native_str_repeat":     nativeStrRepeat,
+		"__native_index_of":       nativeIndexOf,
+		"__native_slice":          nativeSlice,
+		// List
+		"__native_list_concat":  nativeListConcat,
+		"__native_list_insert":  nativeListInsert,
+		"__native_list_reverse": nativeListReverse,
+		// Dict
+		"__native_dict_delete": nativeDictDelete,
+		"__native_dict_merge":  nativeDictMerge,
 		// OS
 		"__native_read_file":   nativeReadFile,
 		"__native_write_file":  nativeWriteFile,
@@ -51,6 +65,10 @@ func init() {
 		"__native_getenv":      nativeGetenv,
 		"__native_exec":        nativeExec,
 		"__native_time":        nativeTime,
+		"__native_sleep":       nativeSleep,
+		"__native_exit":        nativeExit,
+		"__native_format_time": nativeFormatTime,
+		"__native_rename":      nativeRename,
 		// JSON
 		"__native_json_parse":     nativeJsonParse,
 		"__native_json_stringify": nativeJsonStringify,
@@ -129,6 +147,266 @@ func nativeReplace(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: strings.ReplaceAll(s.Value, old.Value, new_.Value)}
 }
 
+// trim — strip leading and trailing whitespace from a string.
+func nativeTrim(args []*parser.Expr, env *Environment) object.Object {
+	s := expectStr(evalExpr(args[0], env), "trim")
+	return &object.StringObj{Value: strings.TrimSpace(s.Value)}
+}
+
+// char_code — return the Unicode code point of the first character.
+// Returns an error for empty strings.
+func nativeCharCode(args []*parser.Expr, env *Environment) object.Object {
+	s := expectStr(evalExpr(args[0], env), "char_code")
+	if len(s.Value) == 0 {
+		return &object.ErrorObj{Message: "char_code() called on empty string"}
+	}
+	runes := []rune(s.Value)
+	return &object.NumberObj{Value: float64(runes[0])}
+}
+
+// from_char_code — build a single-character string from a Unicode code point.
+func nativeFromCharCode(args []*parser.Expr, env *Environment) object.Object {
+	n := expectNum(evalExpr(args[0], env), "from_char_code")
+	code := int(n.Value)
+	if code < 0 || code > 0x10FFFF {
+		return &object.ErrorObj{Message: fmt.Sprintf("from_char_code() code point %d out of range", code)}
+	}
+	return &object.StringObj{Value: string(rune(code))}
+}
+
+// str_reverse — reverse a string (Unicode-safe).
+func nativeStrReverse(args []*parser.Expr, env *Environment) object.Object {
+	s := expectStr(evalExpr(args[0], env), "str_reverse")
+	runes := []rune(s.Value)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return &object.StringObj{Value: string(runes)}
+}
+
+// str_repeat — repeat a string n times.
+func nativeStrRepeat(args []*parser.Expr, env *Environment) object.Object {
+	s := expectStr(evalExpr(args[0], env), "str_repeat")
+	n := expectNum(evalExpr(args[1], env), "str_repeat")
+	count := int(n.Value)
+	if count < 0 {
+		return &object.ErrorObj{Message: "str_repeat() count must be >= 0"}
+	}
+	if count > 1<<20 && len(s.Value) > 0 {
+		return &object.ErrorObj{Message: "str_repeat() result too large"}
+	}
+	return &object.StringObj{Value: strings.Repeat(s.Value, count)}
+}
+
+// index_of — find first position of a substring in a string, or a value in a list.
+// Returns -1 if not found.
+func nativeIndexOf(args []*parser.Expr, env *Environment) object.Object {
+	haystack := evalExpr(args[0], env)
+	needle := evalExpr(args[1], env)
+
+	switch h := haystack.(type) {
+	case *object.StringObj:
+		n, ok := needle.(*object.StringObj)
+		if !ok {
+			runtimeError("index_of() searching in str requires a str needle, got %s", object.TypeName(needle))
+		}
+		idx := strings.Index(h.Value, n.Value)
+		return &object.NumberObj{Value: float64(idx)}
+	case *object.ListObj:
+		for i, el := range h.Elements {
+			if objectsEqual(el, needle) {
+				return &object.NumberObj{Value: float64(i)}
+			}
+		}
+		return &object.NumberObj{Value: -1}
+	default:
+		runtimeError("index_of() requires a str or list as first argument, got %s", object.TypeName(haystack))
+	}
+	return object.Null
+}
+
+// slice — extract a sub-string or sub-list from start (inclusive) to end (exclusive).
+// Supports negative indices (count from end). Clamps out-of-range indices.
+func nativeSlice(args []*parser.Expr, env *Environment) object.Object {
+	val := evalExpr(args[0], env)
+	startN := expectNum(evalExpr(args[1], env), "slice")
+	endN := expectNum(evalExpr(args[2], env), "slice")
+
+	switch v := val.(type) {
+	case *object.StringObj:
+		runes := []rune(v.Value)
+		length := len(runes)
+		start, end := clampSlice(int(startN.Value), int(endN.Value), length)
+		return &object.StringObj{Value: string(runes[start:end])}
+	case *object.ListObj:
+		length := len(v.Elements)
+		start, end := clampSlice(int(startN.Value), int(endN.Value), length)
+		// Copy into a new slice to avoid aliasing the original
+		sliced := make([]object.Object, end-start)
+		copy(sliced, v.Elements[start:end])
+		return &object.ListObj{Elements: sliced}
+	default:
+		runtimeError("slice() requires a str or list as first argument, got %s", object.TypeName(val))
+	}
+	return object.Null
+}
+
+// clampSlice normalizes and clamps start/end indices for slicing.
+// Negative indices wrap from the end. Out-of-range values are clamped.
+func clampSlice(start, end, length int) (int, int) {
+	if start < 0 {
+		start = length + start
+	}
+	if end < 0 {
+		end = length + end
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > length {
+		end = length
+	}
+	if start > end {
+		start = end
+	}
+	return start, end
+}
+
+// objectsEqual compares two Sintax values for equality.
+func objectsEqual(a, b object.Object) bool {
+	switch av := a.(type) {
+	case *object.NumberObj:
+		bv, ok := b.(*object.NumberObj)
+		return ok && av.Value == bv.Value
+	case *object.StringObj:
+		bv, ok := b.(*object.StringObj)
+		return ok && av.Value == bv.Value
+	case *object.BoolObj:
+		bv, ok := b.(*object.BoolObj)
+		return ok && av.Value == bv.Value
+	case *object.NullObj:
+		_, ok := b.(*object.NullObj)
+		return ok
+	default:
+		return a == b // reference equality for lists, dicts, functions
+	}
+}
+
+// --- List natives ---
+
+// list_concat — merge two lists into a new list.
+func nativeListConcat(args []*parser.Expr, env *Environment) object.Object {
+	a := evalExpr(args[0], env)
+	b := evalExpr(args[1], env)
+	la, ok := a.(*object.ListObj)
+	if !ok {
+		runtimeError("list_concat() first argument must be a list, got %s", object.TypeName(a))
+	}
+	lb, ok := b.(*object.ListObj)
+	if !ok {
+		runtimeError("list_concat() second argument must be a list, got %s", object.TypeName(b))
+	}
+	result := make([]object.Object, 0, len(la.Elements)+len(lb.Elements))
+	result = append(result, la.Elements...)
+	result = append(result, lb.Elements...)
+	return &object.ListObj{Elements: result}
+}
+
+// list_insert — insert an element at a specific index. Returns the modified list.
+// Negative indices count from the end. Out-of-range clamps to boundaries.
+func nativeListInsert(args []*parser.Expr, env *Environment) object.Object {
+	val := evalExpr(args[0], env)
+	idxN := expectNum(evalExpr(args[1], env), "list_insert")
+	item := evalExpr(args[2], env)
+
+	l, ok := val.(*object.ListObj)
+	if !ok {
+		runtimeError("list_insert() first argument must be a list, got %s", object.TypeName(val))
+	}
+	idx := int(idxN.Value)
+	length := len(l.Elements)
+
+	// Normalize negative index
+	if idx < 0 {
+		idx = length + idx
+	}
+	// Clamp
+	if idx < 0 {
+		idx = 0
+	}
+	if idx > length {
+		idx = length
+	}
+
+	// Grow slice and shift elements
+	l.Elements = append(l.Elements, nil)
+	copy(l.Elements[idx+1:], l.Elements[idx:])
+	l.Elements[idx] = item
+	return l
+}
+
+// list_reverse — reverse a list in place and return it.
+func nativeListReverse(args []*parser.Expr, env *Environment) object.Object {
+	val := evalExpr(args[0], env)
+	l, ok := val.(*object.ListObj)
+	if !ok {
+		runtimeError("list_reverse() requires a list, got %s", object.TypeName(val))
+	}
+	for i, j := 0, len(l.Elements)-1; i < j; i, j = i+1, j-1 {
+		l.Elements[i], l.Elements[j] = l.Elements[j], l.Elements[i]
+	}
+	return l
+}
+
+// --- Dict natives ---
+
+// dict_delete — remove a key from a dict. Returns the removed value, or null.
+func nativeDictDelete(args []*parser.Expr, env *Environment) object.Object {
+	val := evalExpr(args[0], env)
+	key := expectStr(evalExpr(args[1], env), "dict_delete")
+
+	d, ok := val.(*object.DictObj)
+	if !ok {
+		runtimeError("dict_delete() first argument must be a dict, got %s", object.TypeName(val))
+	}
+	removed, exists := d.Pairs[key.Value]
+	if !exists {
+		return object.Null
+	}
+	delete(d.Pairs, key.Value)
+	// Remove from ordered key list
+	for i, k := range d.Keys {
+		if k == key.Value {
+			d.Keys = append(d.Keys[:i], d.Keys[i+1:]...)
+			break
+		}
+	}
+	return removed
+}
+
+// dict_merge — merge second dict into first (mutates first). Returns the first dict.
+func nativeDictMerge(args []*parser.Expr, env *Environment) object.Object {
+	a := evalExpr(args[0], env)
+	b := evalExpr(args[1], env)
+	da, ok := a.(*object.DictObj)
+	if !ok {
+		runtimeError("dict_merge() first argument must be a dict, got %s", object.TypeName(a))
+	}
+	db, ok := b.(*object.DictObj)
+	if !ok {
+		runtimeError("dict_merge() second argument must be a dict, got %s", object.TypeName(b))
+	}
+	for _, k := range db.Keys {
+		if _, exists := da.Pairs[k]; !exists {
+			da.Keys = append(da.Keys, k)
+		}
+		da.Pairs[k] = db.Pairs[k]
+	}
+	return da
+}
+
+// --- System natives ---
+
 func nativeReadFile(args []*parser.Expr, env *Environment) object.Object {
 	path := expectStr(evalExpr(args[0], env), "read")
 	data, err := os.ReadFile(path.Value)
@@ -188,6 +466,57 @@ func nativeExec(args []*parser.Expr, env *Environment) object.Object {
 
 func nativeTime(args []*parser.Expr, env *Environment) object.Object {
 	return &object.NumberObj{Value: float64(time.Now().Unix())}
+}
+
+// sleep — pause execution for the given number of milliseconds.
+func nativeSleep(args []*parser.Expr, env *Environment) object.Object {
+	ms := expectNum(evalExpr(args[0], env), "sleep")
+	if ms.Value < 0 {
+		return &object.ErrorObj{Message: "sleep() duration must be >= 0"}
+	}
+	if ms.Value > 86400000 { // cap at 24 hours
+		return &object.ErrorObj{Message: "sleep() duration too large (max 86400000ms)"}
+	}
+	time.Sleep(time.Duration(ms.Value) * time.Millisecond)
+	return object.Null
+}
+
+// exit — terminate the process with the given exit code.
+func nativeExit(args []*parser.Expr, env *Environment) object.Object {
+	code := expectNum(evalExpr(args[0], env), "exit")
+	os.Exit(int(code.Value))
+	return object.Null // unreachable
+}
+
+// format_time — format a unix timestamp using Go time layout tokens.
+// Sintax format tokens: YYYY, MM, DD, hh, mm, ss, tz
+func nativeFormatTime(args []*parser.Expr, env *Environment) object.Object {
+	ts := expectNum(evalExpr(args[0], env), "format_time")
+	fmtStr := expectStr(evalExpr(args[1], env), "format_time")
+
+	t := time.Unix(int64(ts.Value), 0)
+
+	// Map readable tokens to Go reference time components
+	layout := fmtStr.Value
+	layout = strings.ReplaceAll(layout, "YYYY", "2006")
+	layout = strings.ReplaceAll(layout, "MM", "01")
+	layout = strings.ReplaceAll(layout, "DD", "02")
+	layout = strings.ReplaceAll(layout, "hh", "15")
+	layout = strings.ReplaceAll(layout, "mm", "04")
+	layout = strings.ReplaceAll(layout, "ss", "05")
+	layout = strings.ReplaceAll(layout, "tz", "MST")
+
+	return &object.StringObj{Value: t.Format(layout)}
+}
+
+// rename — rename/move a file.
+func nativeRename(args []*parser.Expr, env *Environment) object.Object {
+	oldPath := expectStr(evalExpr(args[0], env), "rename")
+	newPath := expectStr(evalExpr(args[1], env), "rename")
+	if err := os.Rename(oldPath.Value, newPath.Value); err != nil {
+		return &object.ErrorObj{Message: "Cannot rename: " + err.Error()}
+	}
+	return object.Null
 }
 
 // --- JSON ---

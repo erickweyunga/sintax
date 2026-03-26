@@ -1,0 +1,60 @@
+-- List standard library
+
+-- Search
+pub fn (list items, value) num index_of:
+    return __native_index_of(items, value)
+
+pub fn (list items, value) bool contains:
+    return __native_index_of(items, value) != -1
+
+-- Extraction
+pub fn (list items, num start, num end) list slice:
+    return __native_slice(items, start, end)
+
+pub fn (list items) first:
+    if len(items) == 0:
+        return error("first() called on empty list")
+    return items[0]
+
+pub fn (list items) last:
+    if len(items) == 0:
+        return error("last() called on empty list")
+    return items[len(items) - 1]
+
+-- Mutation
+pub fn (list items, num index, value) list insert:
+    return __native_list_insert(items, index, value)
+
+pub fn (list a, list b) list concat:
+    return __native_list_concat(a, b)
+
+pub fn (list items) list reverse:
+    return __native_list_reverse(items)
+
+pub fn (list items) list sort:
+    return sort(items)
+
+-- Creation
+pub fn (num n, value) list filled:
+    result = []
+    i = 0
+    while i < n:
+        push(result, value)
+        i += 1
+    return result
+
+pub fn (list items) list unique:
+    result = []
+    i = 0
+    while i < len(items):
+        if __native_index_of(result, items[i]) == -1:
+            push(result, items[i])
+        i += 1
+    return result
+
+-- Measurement
+pub fn (list items) num count:
+    return len(items)
+
+pub fn (list items) bool is_empty:
+    return len(items) == 0

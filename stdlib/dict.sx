@@ -1,0 +1,30 @@
+-- Dict standard library
+
+-- Mutation
+pub fn (dict d, str key) delete:
+    return __native_dict_delete(d, key)
+
+pub fn (dict a, dict b) dict merge:
+    return __native_dict_merge(a, b)
+
+-- Introspection
+pub fn (dict d) list keys:
+    return keys(d)
+
+pub fn (dict d) list values:
+    return values(d)
+
+pub fn (dict d, str key) bool has_key:
+    return has(d, key)
+
+pub fn (dict d) num count:
+    return len(d)
+
+pub fn (dict d) bool is_empty:
+    return len(d) == 0
+
+-- Access
+pub fn (dict d, str key, fallback) get:
+    if has(d, key):
+        return d[key]
+    return fallback

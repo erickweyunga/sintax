@@ -21,6 +21,8 @@ func (cg *CodeGen) compileStatement(stmt *parser.Statement) {
 		cg.compileFuncDef(stmt.FuncDef)
 	case stmt.IfStmt != nil:
 		cg.compileIfStmt(stmt.IfStmt)
+	case stmt.CatchStmt != nil:
+		cg.compileCatchStmt(stmt.CatchStmt)
 	case stmt.SwitchStmt != nil:
 		cg.compileSwitchStmt(stmt.SwitchStmt)
 	case stmt.WhileStmt != nil:
@@ -131,6 +133,30 @@ func (cg *CodeGen) compileIfStmt(ifStmt *parser.IfStmt) {
 		for _, stmt := range ifStmt.Else.Statements {
 			cg.compileStatement(stmt)
 		}
+	}
+	if cg.block.Term == nil {
+		cg.block.NewBr(mergeBlock)
+	}
+
+	cg.block = mergeBlock
+}
+
+func (cg *CodeGen) compileCatchStmt(cs *parser.CatchStmt) {
+	val := cg.compileExpr(cs.Value)
+	cg.setVar(cs.Name, val)
+
+	isErr := cg.callRT("sx_is_error", val)
+	errBool := cg.callRT("sx_truthy", isErr)
+	condI1 := cg.block.NewICmp(enum.IPredNE, errBool, constant.NewInt(i32, 0))
+
+	catchBlock := cg.newBlock("catch.body")
+	mergeBlock := cg.newBlock("catch.merge")
+
+	cg.block.NewCondBr(condI1, catchBlock, mergeBlock)
+
+	cg.block = catchBlock
+	for _, stmt := range cs.Body.Statements {
+		cg.compileStatement(stmt)
 	}
 	if cg.block.Term == nil {
 		cg.block.NewBr(mergeBlock)
@@ -265,10 +291,15 @@ func (cg *CodeGen) compileTypedAssign(ta *parser.TypedAssign) {
 }
 
 func (cg *CodeGen) compileIndexAssign(ia *parser.IndexAssign) {
-	collection := cg.getVar(ia.Name)
-	idx := cg.compileExpr(ia.Index)
+	target := cg.getVar(ia.Name)
+	// Navigate through all indices except the last
+	for i := 0; i < len(ia.Indices)-1; i++ {
+		idx := cg.compileExpr(ia.Indices[i].Index)
+		target = cg.callRT("sx_index", target, idx)
+	}
+	lastIdx := cg.compileExpr(ia.Indices[len(ia.Indices)-1].Index)
 	val := cg.compileExpr(ia.Value)
-	cg.callRTVoid("sx_index_set", collection, idx, val)
+	cg.callRTVoid("sx_index_set", target, lastIdx, val)
 }
 
 func (cg *CodeGen) compileCompoundAssign(ca *parser.CompoundAssign) {

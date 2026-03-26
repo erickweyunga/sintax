@@ -7,6 +7,7 @@ import (
 
 	"github.com/erickweyunga/sintax/analyzer"
 	"github.com/erickweyunga/sintax/evaluator"
+	"github.com/erickweyunga/sintax/lsp"
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
 	"github.com/erickweyunga/sintax/repl"
@@ -29,6 +30,8 @@ func main() {
 		testCommand()
 	case "lib":
 		libCommand()
+	case "lsp":
+		lsp.Start(findStdlibDir())
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -147,6 +150,7 @@ func printHelp() {
 	fmt.Println("  sintax test <file.sx>      Test specific file")
 	fmt.Println("  sintax lib                 List libraries")
 	fmt.Println("  sintax lib <name>          Library details")
+	fmt.Println("  sintax lsp                 Start LSP server")
 	fmt.Println("  sintax help                Show help")
 }
 

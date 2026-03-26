@@ -1,0 +1,84 @@
+-- Tests for catch statement
+
+fn (num a, num b) divide:
+    if b == 0:
+        return error("division by zero")
+    return a / b
+
+-- catch runs body on error
+fn () test_catch_error:
+    catch result = divide(10, 0):
+        return "caught"
+    return "not caught"
+-- test: test_catch_error() == "caught"
+
+-- catch skips body on success
+fn () test_catch_success:
+    catch result = divide(10, 2):
+        return "caught"
+    return result
+-- test: test_catch_success() == 5
+
+-- variable is available after catch
+fn () test_catch_var:
+    catch val = divide(100, 4):
+        return -1
+    return val
+-- test: test_catch_var() == 25
+
+-- variable holds the error inside catch body
+fn () test_catch_err_var:
+    catch val = divide(1, 0):
+        return err(val)
+    return false
+-- test: test_catch_err_var() == true
+
+-- catch with early return as guard
+fn (num x) safe_sqrt:
+    catch input = divide(x, 1):
+        return error("bad input")
+    if input < 0:
+        return error("negative")
+    return input
+-- test: safe_sqrt(25) == 25
+
+-- nested catch
+fn () test_nested:
+    catch a = divide(10, 0):
+        catch b = divide(5, 0):
+            return "both failed"
+        return "only a failed"
+    return "neither failed"
+-- test: test_nested() == "both failed"
+
+-- catch with non-error error() value
+fn () test_catch_custom:
+    catch e = error("custom msg"):
+        return str(e)
+    return "no error"
+-- test: test_catch_custom() == "error: custom msg"
+
+-- catch does not trigger on falsy non-error values
+fn () test_catch_null:
+    catch val = null:
+        return "caught"
+    return "not caught"
+-- test: test_catch_null() == "not caught"
+
+fn () test_catch_zero:
+    catch val = 0:
+        return "caught"
+    return "not caught"
+-- test: test_catch_zero() == "not caught"
+
+fn () test_catch_false:
+    catch val = false:
+        return "caught"
+    return "not caught"
+-- test: test_catch_false() == "not caught"
+
+fn () test_catch_empty_str:
+    catch val = "":
+        return "caught"
+    return "not caught"
+-- test: test_catch_empty_str() == "not caught"

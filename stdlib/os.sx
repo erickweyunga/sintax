@@ -1,25 +1,41 @@
 -- OS standard library
 
-fn (str path) read:
+-- File I/O
+pub fn (str path) read:
     return __native_read_file(path)
 
-fn (str path, data) write:
+pub fn (str path, data) write:
     return __native_write_file(path, data)
 
-fn (str path) bool exists:
+pub fn (str path) bool exists:
     return __native_file_exists(path)
 
-fn (str path) delete:
+pub fn (str path) delete:
     return __native_delete_file(path)
 
-fn () str cwd:
+pub fn (str old, str new) rename:
+    return __native_rename(old, new)
+
+-- Environment
+pub fn () str cwd:
     return __native_cwd()
 
-fn (str name) getenv:
+pub fn (str name) getenv:
     return __native_getenv(name)
 
-fn (str cmd) str exec:
+pub fn (str cmd) str exec:
     return __native_exec(cmd)
 
-fn () num time:
+-- Time
+pub fn () num time:
     return __native_time()
+
+pub fn (num timestamp, str format) str format_time:
+    return __native_format_time(timestamp, format)
+
+pub fn (num ms) sleep:
+    return __native_sleep(ms)
+
+-- Process
+pub fn (num code) exit:
+    return __native_exit(code)

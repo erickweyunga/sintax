@@ -34,6 +34,7 @@ func init() {
 		"bool":   builtinBool,
 		"err":    builtinErr,
 		"error":  builtinError,
+		"sort":   builtinSort,
 	}
 }
 
@@ -286,4 +287,69 @@ func builtinError(args []*parser.Expr, env *Environment) object.Object {
 	}
 	val := evalExpr(args[0], env)
 	return &object.ErrorObj{Message: val.Inspect()}
+}
+
+// sort — sort a list in place and return it
+func builtinSort(args []*parser.Expr, env *Environment) object.Object {
+	if len(args) != 1 {
+		runtimeError("sort() requires 1 argument")
+	}
+	val := evalExpr(args[0], env)
+	l, ok := val.(*object.ListObj)
+	if !ok {
+		runtimeError("sort() requires a list")
+	}
+	// Sort using comparison: numbers by value, strings alphabetically
+	sortList(l.Elements)
+	return l
+}
+
+func sortList(items []object.Object) {
+	n := len(items)
+	for i := 1; i < n; i++ {
+		key := items[i]
+		j := i - 1
+		for j >= 0 && compareObjects(items[j], key) > 0 {
+			items[j+1] = items[j]
+			j--
+		}
+		items[j+1] = key
+	}
+}
+
+func compareObjects(a, b object.Object) int {
+	// Numbers compare by value
+	an, aok := a.(*object.NumberObj)
+	bn, bok := b.(*object.NumberObj)
+	if aok && bok {
+		if an.Value < bn.Value {
+			return -1
+		}
+		if an.Value > bn.Value {
+			return 1
+		}
+		return 0
+	}
+	// Strings compare alphabetically
+	as, aok := a.(*object.StringObj)
+	bs, bok := b.(*object.StringObj)
+	if aok && bok {
+		if as.Value < bs.Value {
+			return -1
+		}
+		if as.Value > bs.Value {
+			return 1
+		}
+		return 0
+	}
+	// Mixed types: compare by type name
+	ta := object.TypeName(a)
+	tb := object.TypeName(b)
+	if ta < tb {
+		return -1
+	}
+	if ta > tb {
+		return 1
+	}
+	return 0
 }

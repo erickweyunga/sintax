@@ -80,10 +80,10 @@ The only escape in single-quoted strings is `\'` to include a literal single quo
 ## Examples
 
 ```
-use "std/json/*"
+use "std/json"
 
 -- JSON is clean with single quotes
-data = parse('{"users": [{"name": "Eric"}, {"name": "John"}]}')
+data = json/parse('{"users": [{"name": "Eric"}, {"name": "John"}]}')
 >> data["users"]
 
 -- String building with double quotes
@@ -92,7 +92,7 @@ for user in data["users"]:
     >> "Hello, {name}!"
 
 -- Mixed
-config = parse('{"debug": true, "port": 8080}')
+config = json/parse('{"debug": true, "port": 8080}')
 port = config["port"]
 >> "Server running on port {port}"
 ```

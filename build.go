@@ -172,9 +172,8 @@ func compileImports(cg *codegen.CodeGen, imports []preprocessor.Import) {
 			continue
 		}
 
-		wildcard := imp.Function == "*"
 		fmt.Printf("  \033[2mCompiling module %s\033[0m\n", modName)
-		cg.CompileModule(program, modName, wildcard)
+		cg.CompileModule(program, modName, imp.Function)
 	}
 }
 

@@ -1,0 +1,114 @@
+-- Tests for native building block primitives
+
+-- === String natives ===
+
+-- test: __native_trim("  hello  ") == "hello"
+-- test: __native_trim("  ") == ""
+-- test: __native_trim("abc") == "abc"
+-- test: __native_trim("\t\n hi \n\t") == "hi"
+
+-- test: __native_char_code("A") == 65
+-- test: __native_char_code("a") == 97
+-- test: __native_char_code("0") == 48
+
+-- test: __native_from_char_code(65) == "A"
+-- test: __native_from_char_code(97) == "a"
+-- test: __native_from_char_code(48) == "0"
+
+-- test: __native_str_reverse("hello") == "olleh"
+-- test: __native_str_reverse("") == ""
+-- test: __native_str_reverse("a") == "a"
+-- test: __native_str_reverse("ab") == "ba"
+
+-- test: __native_str_repeat("ab", 3) == "ababab"
+-- test: __native_str_repeat("x", 0) == ""
+-- test: __native_str_repeat("", 5) == ""
+-- test: __native_str_repeat("-", 1) == "-"
+
+-- test: __native_index_of("hello world", "world") == 6
+-- test: __native_index_of("hello", "xyz") == -1
+-- test: __native_index_of("abcabc", "bc") == 1
+-- test: __native_index_of("hello", "") == 0
+
+-- test: __native_slice("hello", 1, 4) == "ell"
+-- test: __native_slice("hello", 0, 5) == "hello"
+-- test: __native_slice("hello", 0, 0) == ""
+-- test: __native_slice("hello", -3, -1) == "ll"
+
+-- === List natives ===
+
+-- test: __native_index_of([10, 20, 30], 20) == 1
+-- test: __native_index_of([10, 20, 30], 99) == -1
+-- test: __native_index_of(["a", "b", "c"], "b") == 1
+
+-- test: len(__native_slice([1, 2, 3, 4, 5], 1, 4)) == 3
+-- test: __native_slice([1, 2, 3, 4, 5], 1, 4)[0] == 2
+-- test: __native_slice([1, 2, 3, 4, 5], 1, 4)[2] == 4
+
+fn () test_list_concat:
+    a = [1, 2]
+    b = [3, 4]
+    c = __native_list_concat(a, b)
+    return len(c) == 4 and c[0] == 1 and c[3] == 4
+-- test: test_list_concat() == true
+
+fn () test_concat_no_alias:
+    a = [1, 2]
+    b = [3]
+    c = __native_list_concat(a, b)
+    push(c, 99)
+    return len(a) == 2 and len(b) == 1
+-- test: test_concat_no_alias() == true
+
+fn () test_list_insert:
+    items = [1, 3, 4]
+    __native_list_insert(items, 1, 2)
+    return items[0] == 1 and items[1] == 2 and items[2] == 3 and len(items) == 4
+-- test: test_list_insert() == true
+
+fn () test_list_insert_end:
+    items = [1, 2]
+    __native_list_insert(items, 100, 3)
+    return items[2] == 3 and len(items) == 3
+-- test: test_list_insert_end() == true
+
+fn () test_list_reverse:
+    items = [1, 2, 3]
+    __native_list_reverse(items)
+    return items[0] == 3 and items[1] == 2 and items[2] == 1
+-- test: test_list_reverse() == true
+
+-- === Dict natives ===
+
+fn () test_dict_delete:
+    d = {"a": 1, "b": 2, "c": 3}
+    removed = __native_dict_delete(d, "b")
+    return removed == 2 and len(d) == 2 and has(d, "b") == false
+-- test: test_dict_delete() == true
+
+fn () test_dict_delete_missing:
+    d = {"a": 1}
+    removed = __native_dict_delete(d, "z")
+    return type(removed) == "null" and len(d) == 1
+-- test: test_dict_delete_missing() == true
+
+fn () test_dict_merge:
+    a = {"x": 1, "y": 2}
+    b = {"y": 99, "z": 3}
+    __native_dict_merge(a, b)
+    return a["x"] == 1 and a["y"] == 99 and a["z"] == 3 and len(a) == 3
+-- test: test_dict_merge() == true
+
+-- === System natives ===
+
+-- test: type(__native_format_time(__native_time(), "YYYY-MM-DD")) == "str"
+-- test: len(__native_format_time(0, "YYYY")) == 4
+
+fn () test_rename_roundtrip:
+    __native_write_file("/tmp/_sx_test_rename.txt", "hi")
+    __native_rename("/tmp/_sx_test_rename.txt", "/tmp/_sx_test_renamed.txt")
+    result = __native_file_exists("/tmp/_sx_test_renamed.txt")
+    gone = __native_file_exists("/tmp/_sx_test_rename.txt")
+    __native_delete_file("/tmp/_sx_test_renamed.txt")
+    return result == true and gone == false
+-- test: test_rename_roundtrip() == true

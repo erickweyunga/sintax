@@ -46,6 +46,7 @@ type FuncInfo struct {
 	Line       int      // definition line (0 = builtin)
 	Used       bool     // was this function ever called?
 	IsBuiltin  bool
+	Pub        bool
 }
 
 // VarInfo holds what we know about a variable at analysis time.
@@ -70,6 +71,7 @@ type StdlibSig struct {
 	ParamTypes []string // e.g. ["num"] or ["str", "str"]
 	ReturnType string   // e.g. "num", "str", "list", "bool", ""
 	Arity      int
+	Pub        bool
 }
 
 // Analyzer validates a Sintax AST before execution or compilation.
@@ -81,7 +83,6 @@ type Analyzer struct {
 	// imported function names (stdlib or user modules)
 	importedFuncs   map[string]*ImportInfo
 	importedModules map[string]bool
-	wildcardModules map[string]bool
 	usedModules     map[string]bool
 
 	// source info for error messages
@@ -106,12 +107,11 @@ type Analyzer struct {
 // New creates a new analyzer.
 func New(file string, lines []string, lineMap []int) *Analyzer {
 	return &Analyzer{
-		scopes:           []map[string]*VarInfo{},
-		functions:        make(map[string]*FuncInfo),
-		importedFuncs:    make(map[string]*ImportInfo),
-		importedModules:  make(map[string]bool),
-		wildcardModules:  make(map[string]bool),
-		usedModules:      make(map[string]bool),
+		scopes:          []map[string]*VarInfo{},
+		functions:       make(map[string]*FuncInfo),
+		importedFuncs:   make(map[string]*ImportInfo),
+		importedModules: make(map[string]bool),
+		usedModules:     make(map[string]bool),
 		loopStringConcat: make(map[string]bool),
 		file:             file,
 		lines:            lines,
@@ -182,8 +182,8 @@ func (a *Analyzer) markTestReferences() {
 		trimmed := strings.TrimSpace(line)
 		if expr, ok := strings.CutPrefix(trimmed, "-- test:"); ok {
 			expr = strings.TrimSpace(expr)
-			// Extract function names from test expressions
-			// Look for patterns like funcName( in the test expression
+			// Rewrite namespace calls so "string/trim(" becomes "string__trim("
+			expr = preprocessor.RewriteLine(expr, a.imports)
 			a.markFuncNamesInString(expr)
 		}
 	}
@@ -194,21 +194,24 @@ func (a *Analyzer) markTestReferences() {
 func (a *Analyzer) markFuncNamesInString(s string) {
 	i := 0
 	for i < len(s) {
-		// Find start of identifier
 		if isIdentStart(s[i]) {
 			j := i + 1
 			for j < len(s) && isIdentCont(s[j]) {
 				j++
 			}
 			name := s[i:j]
-			// Check if followed by '(' — it's a function call
 			rest := strings.TrimSpace(s[j:])
 			if len(rest) > 0 && rest[0] == '(' {
 				if f, ok := a.functions[name]; ok {
 					f.Used = true
 				}
+				// Mark namespaced module calls: math__sqrt → mark std/math as used
+				if strings.Contains(name, "__") {
+					parts := strings.SplitN(name, "__", 2)
+					a.usedModules["std/"+parts[0]] = true
+					a.usedModules[parts[0]] = true
+				}
 			}
-			// Also mark as a variable reference
 			a.markTestVar(name)
 			i = j
 		} else {
@@ -395,7 +398,7 @@ func (a *Analyzer) loadStdlibDir(dir string) {
 				continue
 			}
 			fd := stmt.FuncDef
-			sig := &StdlibSig{Arity: len(fd.Params)}
+			sig := &StdlibSig{Arity: len(fd.Params), Pub: fd.Pub}
 			for _, param := range fd.Params {
 				t := ""
 				if param.Type != nil {
@@ -432,6 +435,7 @@ func (a *Analyzer) registerFunc(fd *parser.FuncDef) {
 		ParamNames: paramNames,
 		ParamTypes: paramTypes,
 		ReturnType: retType,
+		Pub:        fd.Pub,
 	}
 }
 
@@ -453,13 +457,52 @@ func (a *Analyzer) registerBuiltins() {
 		"bool":   1,
 		"error":  1,
 		"err":    1,
+		"sort":   1,
 	}
 	for name, arity := range builtins {
 		a.functions[name] = &FuncInfo{
 			Name:      name,
 			Arity:     arity,
 			IsBuiltin: true,
-			Used:      true, // don't warn about unused builtins
+			Used:      true,
+		}
+	}
+
+	// Native bridge functions callable from stdlib .sx files and directly.
+	natives := map[string]int{
+		// Math
+		"__native_sqrt": 1, "__native_sin": 1, "__native_cos": 1,
+		"__native_tan": 1, "__native_asin": 1, "__native_acos": 1,
+		"__native_atan": 1, "__native_log": 1, "__native_log2": 1,
+		"__native_log10": 1, "__native_exp": 1, "__native_floor": 1,
+		"__native_ceil": 1, "__native_round": 1, "__native_cbrt": 1,
+		"__native_pow": 2, "__native_random": 0,
+		// String
+		"__native_upper": 1, "__native_lower": 1, "__native_split": 2,
+		"__native_replace": 3, "__native_trim": 1, "__native_char_code": 1,
+		"__native_from_char_code": 1, "__native_str_reverse": 1,
+		"__native_str_repeat": 2, "__native_index_of": 2, "__native_slice": 3,
+		// List
+		"__native_list_concat": 2, "__native_list_insert": 3,
+		"__native_list_reverse": 1,
+		// Dict
+		"__native_dict_delete": 2, "__native_dict_merge": 2,
+		// OS
+		"__native_read_file": 1, "__native_write_file": 2,
+		"__native_file_exists": 1, "__native_delete_file": 1,
+		"__native_cwd": 0, "__native_getenv": 1, "__native_exec": 1,
+		"__native_time": 0, "__native_sleep": 1, "__native_exit": 1,
+		"__native_format_time": 2, "__native_rename": 2,
+		// JSON
+		"__native_json_parse": 1, "__native_json_stringify": 1,
+		"__native_json_pretty": 1,
+	}
+	for name, arity := range natives {
+		a.functions[name] = &FuncInfo{
+			Name:      name,
+			Arity:     arity,
+			IsBuiltin: true,
+			Used:      true,
 		}
 	}
 }
@@ -474,8 +517,6 @@ func (a *Analyzer) registerImports() {
 			switch imp.Function {
 			case "":
 				a.importedFuncs["__user_module__"+modName] = &ImportInfo{Module: imp.Module, Used: true}
-			case "*":
-				a.importedFuncs["__user_wildcard__"+modName] = &ImportInfo{Module: imp.Module, Used: true}
 			default:
 				a.importedFuncs[imp.Function] = &ImportInfo{Module: imp.Module, Function: imp.Function}
 			}
@@ -491,11 +532,8 @@ func (a *Analyzer) registerImports() {
 			continue
 		}
 
-		// Register module as known (stdlib is .sx files, can't enumerate at analysis time)
 		a.importedModules[imp.Module] = true
-		if imp.Function == "*" {
-			a.wildcardModules[imp.Module] = true
-		} else if imp.Function != "" {
+		if imp.Function != "" {
 			a.importedFuncs[imp.Function] = &ImportInfo{Module: imp.Module, Function: imp.Function}
 		}
 	}
@@ -549,6 +587,8 @@ func (a *Analyzer) checkStatement(stmt *parser.Statement) {
 		a.checkFuncDef(stmt.FuncDef, line)
 	case stmt.IfStmt != nil:
 		a.checkIfStmt(stmt.IfStmt, line)
+	case stmt.CatchStmt != nil:
+		a.checkCatchStmt(stmt.CatchStmt, line)
 	case stmt.SwitchStmt != nil:
 		a.checkSwitchStmt(stmt.SwitchStmt, line)
 	case stmt.WhileStmt != nil:
@@ -687,6 +727,23 @@ func (a *Analyzer) checkIfStmt(ifStmt *parser.IfStmt, line int) {
 	}
 }
 
+func (a *Analyzer) checkCatchStmt(cs *parser.CatchStmt, line int) {
+	a.checkExpr(cs.Value, line)
+	a.define(cs.Name, "", line)
+	// Mark catch variable as used — it is implicitly consumed by the error check,
+	// similar to how for-loop variables are marked used.
+	for i := len(a.scopes) - 1; i >= 0; i-- {
+		if v, ok := a.scopes[i][cs.Name]; ok {
+			v.Used = true
+			break
+		}
+	}
+	if len(cs.Body.Statements) == 0 {
+		a.addWarning(line, "Empty 'catch' body")
+	}
+	a.checkBlock(cs.Body)
+}
+
 func (a *Analyzer) checkSwitchStmt(sw *parser.SwitchStmt, line int) {
 	a.checkExpr(sw.Value, line)
 
@@ -778,7 +835,9 @@ func (a *Analyzer) checkIndexAssign(ia *parser.IndexAssign, line int) {
 	} else {
 		a.markUsed(ia.Name)
 	}
-	a.checkExpr(ia.Index, line)
+	for _, idx := range ia.Indices {
+		a.checkExpr(idx.Index, line)
+	}
 	a.checkExpr(ia.Value, line)
 }
 
@@ -954,8 +1013,6 @@ func (a *Analyzer) checkPrimary(p *parser.Primary, line int) {
 	switch {
 	case p.Lambda != nil:
 		a.checkLambda(p.Lambda, line)
-	case p.IndexAccess != nil:
-		a.checkIndexAccess(p.IndexAccess, line)
 	case p.FuncCall != nil:
 		a.checkFuncCall(p.FuncCall, line)
 	case p.DictLit != nil:
@@ -965,7 +1022,6 @@ func (a *Analyzer) checkPrimary(p *parser.Primary, line int) {
 			a.checkExpr(el, line)
 		}
 	case p.String != nil:
-		// Only double-quoted strings support interpolation
 		if (*p.String)[0] == '"' {
 			a.markInterpolationRefs(*p.String)
 		}
@@ -975,8 +1031,13 @@ func (a *Analyzer) checkPrimary(p *parser.Primary, line int) {
 		a.checkExpr(p.SubExpr, line)
 	}
 
-	for _, mc := range p.Methods {
-		a.checkMethodCall(mc, line)
+	// Suffix chain: [index] and .method()
+	for _, s := range p.Suffix {
+		if s.Index != nil {
+			a.checkExpr(s.Index.Index, line)
+		} else if s.Method != nil {
+			a.checkMethodCall(s.Method, line)
+		}
 	}
 }
 
@@ -992,14 +1053,6 @@ func (a *Analyzer) checkIdent(name string, line int) {
 	}
 }
 
-func (a *Analyzer) checkIndexAccess(ia *parser.IndexAccess, line int) {
-	if !a.isDefined(ia.Name) {
-		a.addError(line, "Undefined name: '%s'", ia.Name)
-	} else {
-		a.markUsed(ia.Name)
-	}
-	a.checkExpr(ia.Index, line)
-}
 
 func (a *Analyzer) checkLambda(l *parser.Lambda, line int) {
 	seen := make(map[string]bool)
@@ -1054,14 +1107,6 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 		}
 	}
 
-	// Wildcard user module
-	for key, imp := range a.importedFuncs {
-		if strings.HasPrefix(key, "__user_wildcard__") {
-			imp.Used = true
-			return
-		}
-	}
-
 	// Variable holding a function
 	if a.isDefined(fc.Name) {
 		a.markUsed(fc.Name)
@@ -1077,13 +1122,6 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 			a.checkStdlibCallTypes(fc, line)
 			return
 		}
-	}
-
-	// Wildcard module — allow any function if module is wildcard-imported
-	for mod := range a.wildcardModules {
-		a.usedModules[mod] = true
-		a.checkStdlibCallTypes(fc, line)
-		return
 	}
 
 	a.addError(line, "Undefined function: '%s'", fc.Name)
@@ -1232,7 +1270,7 @@ func (a *Analyzer) inferBuiltinReturnType(name string) string {
 		return "bool"
 	case "num":
 		return "num"
-	case "keys", "values", "range", "split":
+	case "keys", "values", "range", "split", "sort":
 		return "list"
 	case "print":
 		return "null"
@@ -1250,15 +1288,37 @@ func (a *Analyzer) inferBuiltinReturnType(name string) string {
 func (a *Analyzer) inferStdlibReturnType(module, fn string) string {
 	switch module {
 	case "math":
-		return "num" // all math functions return num
+		return "num"
 	case "string":
 		switch fn {
 		case "split":
 			return "list"
 		case "contains", "starts_with", "ends_with":
 			return "bool"
+		case "length", "index_of", "char_code":
+			return "num"
 		default:
 			return "str"
+		}
+	case "list":
+		switch fn {
+		case "index_of", "count":
+			return "num"
+		case "contains", "is_empty":
+			return "bool"
+		case "slice", "concat", "reverse", "sort", "filled", "unique":
+			return "list"
+		}
+	case "dict":
+		switch fn {
+		case "has_key", "is_empty":
+			return "bool"
+		case "count":
+			return "num"
+		case "keys", "values":
+			return "list"
+		case "merge":
+			return "dict"
 		}
 	case "os":
 		switch fn {
@@ -1266,7 +1326,7 @@ func (a *Analyzer) inferStdlibReturnType(module, fn string) string {
 			return "bool"
 		case "time":
 			return "num"
-		default:
+		case "format_time", "cwd", "exec", "read":
 			return "str"
 		}
 	case "json":
@@ -1310,6 +1370,18 @@ func (a *Analyzer) checkArity(name string, got, expected int, line int) {
 func (a *Analyzer) checkStdlibCallTypes(fc *parser.FuncCall, line int) {
 	sig, ok := a.stdlibSigs[fc.Name]
 	if !ok {
+		return
+	}
+
+	// Check visibility
+	if !sig.Pub {
+		name := fc.Name
+		if strings.Contains(name, "__") {
+			parts := strings.SplitN(name, "__", 2)
+			a.addError(line, "'%s' is private in module '%s' (add 'pub' to export it)", parts[1], parts[0])
+		} else {
+			a.addError(line, "'%s' is private (add 'pub' to export it)", name)
+		}
 		return
 	}
 

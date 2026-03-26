@@ -80,15 +80,14 @@ func (cg *CodeGen) Generate(program *parser.Program) string {
 
 // CompileModule compiles an imported module's function definitions.
 // The prefix is prepended to function names (e.g. "math" → "math__sqrt").
-// For wildcard imports, functions are also registered without prefix.
-func (cg *CodeGen) CompileModule(program *parser.Program, prefix string, wildcard bool) {
+// For specific function imports, functions are also registered without prefix.
+func (cg *CodeGen) CompileModule(program *parser.Program, prefix string, specificFunc string) {
 	for _, stmt := range program.Statements {
 		if stmt.FuncDef != nil {
-			// Forward-declare with prefix
 			prefixed := *stmt.FuncDef
 			prefixed.Name = prefix + "__" + stmt.FuncDef.Name
 			cg.forwardDeclare(&prefixed)
-			if wildcard {
+			if specificFunc != "" && stmt.FuncDef.Name == specificFunc {
 				cg.forwardDeclare(stmt.FuncDef)
 			}
 		}
@@ -98,8 +97,7 @@ func (cg *CodeGen) CompileModule(program *parser.Program, prefix string, wildcar
 			prefixed := *stmt.FuncDef
 			prefixed.Name = prefix + "__" + stmt.FuncDef.Name
 			cg.compileFuncDef(&prefixed)
-			if wildcard {
-				// Also compile without prefix so direct calls work
+			if specificFunc != "" && stmt.FuncDef.Name == specificFunc {
 				cg.compileFuncDef(stmt.FuncDef)
 			}
 		}

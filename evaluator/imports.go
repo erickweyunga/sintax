@@ -108,8 +108,6 @@ func loadModule(imp preprocessor.Import, filePath string) error {
 	switch imp.Function {
 	case "":
 		importedUserEnvs[modName] = modEnv
-	case "*":
-		importedUserEnvs["__wildcard__"+modName] = modEnv
 	default:
 		importedUserEnvs["__specific__"+imp.Function+"__"+modName] = modEnv
 	}
@@ -132,13 +130,11 @@ func callUserModule(name string, args []*parser.Expr, env *Environment) (object.
 	return callFromEnv(modEnv, parts[1], parts[0], args, env)
 }
 
-// callWildcardModule looks up a function in wildcard/specific imports.
-func callWildcardModule(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
+// callSpecificImport looks up a function imported via use "mod/func".
+func callSpecificImport(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
 	for key, modEnv := range importedUserEnvs {
-		if strings.HasPrefix(key, "__wildcard__") || strings.HasPrefix(key, "__specific__"+name+"__") {
-			if result, ok := callFromEnv(modEnv, name, "", args, env); ok {
-				return result, true
-			}
+		if strings.HasPrefix(key, "__specific__"+name+"__") {
+			return callFromEnv(modEnv, name, "", args, env)
 		}
 	}
 	return nil, false
@@ -155,6 +151,15 @@ func callFromEnv(modEnv *Environment, funcName, modName string, args []*parser.E
 			runtimeError("'%s' is not a function in module '%s'", funcName, modName)
 		}
 		return nil, false
+	}
+	if !fn.Pub {
+		if modName != "" {
+			runtimeError("'%s' is private in module '%s' (add 'pub' to export it)", funcName, modName)
+		}
+		return nil, false
+	}
+	if len(fn.Params) != len(args) {
+		runtimeError("'%s' expects %d args, got %d", funcName, len(fn.Params), len(args))
 	}
 	fnEnv := NewEnclosed(fn.Env.(*Environment))
 	for i, param := range fn.Params {

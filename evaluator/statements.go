@@ -16,6 +16,8 @@ func evalStatement(stmt *parser.Statement, env *Environment) object.Object {
 		return evalFuncDef(stmt.FuncDef, env)
 	case stmt.IfStmt != nil:
 		return evalIfStmt(stmt.IfStmt, env)
+	case stmt.CatchStmt != nil:
+		return evalCatchStmt(stmt.CatchStmt, env)
 	case stmt.SwitchStmt != nil:
 		return evalSwitchStmt(stmt.SwitchStmt, env)
 	case stmt.WhileStmt != nil:
@@ -65,6 +67,7 @@ func evalFuncDef(fd *parser.FuncDef, env *Environment) object.Object {
 		ReturnType: retType,
 		Body:       fd.Body,
 		Env:        env,
+		Pub:        fd.Pub,
 	}
 	env.Set(fd.Name, fn)
 	return fn
@@ -76,6 +79,15 @@ func evalIfStmt(ifStmt *parser.IfStmt, env *Environment) object.Object {
 		return evalStatements(ifStmt.Body.Statements, env)
 	} else if ifStmt.Else != nil {
 		return evalStatements(ifStmt.Else.Statements, env)
+	}
+	return object.Null
+}
+
+func evalCatchStmt(cs *parser.CatchStmt, env *Environment) object.Object {
+	val := evalExpr(cs.Value, env)
+	env.Set(cs.Name, val)
+	if _, isErr := val.(*object.ErrorObj); isErr {
+		return evalStatements(cs.Body.Statements, env)
 	}
 	return object.Null
 }
@@ -167,12 +179,21 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 	if !ok {
 		runtimeError("Undefined name: '%s'", ia.Name)
 	}
-	idx := evalExpr(ia.Index, env)
+
 	val := evalExpr(ia.Value, env)
 
-	switch o := obj.(type) {
+	// Navigate through all indices except the last
+	target := obj
+	for i := 0; i < len(ia.Indices)-1; i++ {
+		idx := evalExpr(ia.Indices[i].Index, env)
+		target = evalIndexOn(target, idx)
+	}
+
+	// Set at the last index
+	lastIdx := evalExpr(ia.Indices[len(ia.Indices)-1].Index, env)
+	switch o := target.(type) {
 	case *object.DictObj:
-		key, ok := idx.(*object.StringObj)
+		key, ok := lastIdx.(*object.StringObj)
 		if !ok {
 			runtimeError("Dict key must be a str")
 		}
@@ -181,17 +202,20 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 		}
 		o.Pairs[key.Value] = val
 	case *object.ListObj:
-		idxNum, ok := idx.(*object.NumberObj)
+		idxNum, ok := lastIdx.(*object.NumberObj)
 		if !ok {
 			runtimeError("Index must be a num")
 		}
 		i := int(idxNum.Value)
+		if i < 0 {
+			i += len(o.Elements)
+		}
 		if i < 0 || i >= len(o.Elements) {
-			runtimeError("Index %d out of range (length %d)", i, len(o.Elements))
+			runtimeError("Index %d out of range (length %d)", int(idxNum.Value), len(o.Elements))
 		}
 		o.Elements[i] = val
 	default:
-		runtimeError("'%s' is not a list or dict", ia.Name)
+		runtimeError("Cannot assign by index into %s", object.TypeName(target))
 	}
 	return val
 }

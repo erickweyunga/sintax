@@ -145,10 +145,6 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	switch {
 	case p.Lambda != nil:
 		result = cg.compileLambda(p.Lambda)
-	case p.IndexAccess != nil:
-		collection := cg.getVar(p.IndexAccess.Name)
-		idx := cg.compileExpr(p.IndexAccess.Index)
-		result = cg.callRT("sx_index", collection, idx)
 	case p.FuncCall != nil:
 		result = cg.compileFuncCall(p.FuncCall)
 	case p.DictLit != nil:
@@ -201,17 +197,22 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 		result = cg.callRT("sx_null")
 	}
 
-	// Method chain: value.method(args).method(args)...
-	for _, mc := range p.Methods {
-		nameStr := cg.globalString(mc.Name)
-		if len(mc.Args) == 0 {
-			result = cg.callRT("sx_method", result, nameStr, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
-		} else {
-			// Compile args and pass first arg pointer
-			arg0 := cg.compileExpr(mc.Args[0])
-			argPtr := cg.block.NewAlloca(sxValuePtr)
-			cg.block.NewStore(arg0, argPtr)
-			result = cg.callRT("sx_method", result, nameStr, argPtr, constant.NewInt(i32, int64(len(mc.Args))))
+	// Suffix chain: [index] and .method(args) interleaved
+	for _, s := range p.Suffix {
+		if s.Index != nil {
+			idx := cg.compileExpr(s.Index.Index)
+			result = cg.callRT("sx_index", result, idx)
+		} else if s.Method != nil {
+			mc := s.Method
+			nameStr := cg.globalString(mc.Name)
+			if len(mc.Args) == 0 {
+				result = cg.callRT("sx_method", result, nameStr, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
+			} else {
+				arg0 := cg.compileExpr(mc.Args[0])
+				argPtr := cg.block.NewAlloca(sxValuePtr)
+				cg.block.NewStore(arg0, argPtr)
+				result = cg.callRT("sx_method", result, nameStr, argPtr, constant.NewInt(i32, int64(len(mc.Args))))
+			}
 		}
 	}
 

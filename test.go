@@ -152,7 +152,7 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	evaluator.EvalDefinitionsOnly(program, env)
 
 	for _, tc := range tests {
-		if runSingleTest(tc, env) {
+		if runSingleTest(tc, env, result.Imports) {
 			r.Passed++
 		} else {
 			r.Failed++
@@ -164,8 +164,8 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	return r
 }
 
-func runSingleTest(tc TestCase, env *evaluator.Environment) bool {
-	testSource := tc.Expr + "\n"
+func runSingleTest(tc TestCase, env *evaluator.Environment, imports []preprocessor.Import) bool {
+	testSource := preprocessor.RewriteLine(tc.Expr, imports) + "\n"
 	result := preprocessor.Process(testSource)
 
 	p := parser.NewParser()

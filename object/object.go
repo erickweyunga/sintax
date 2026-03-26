@@ -111,6 +111,7 @@ type FuncObj struct {
 	ReturnType string // empty = untyped
 	Body       *parser.Block
 	Env        Env
+	Pub        bool
 }
 
 func (o *FuncObj) Inspect() string { return fmt.Sprintf("<fn %s>", o.Name) }
