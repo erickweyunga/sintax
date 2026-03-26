@@ -4,9 +4,9 @@ Sintax has a standard library of modules and supports importing user modules.
 
 ## Importing Stdlib Modules
 
-Stdlib modules are prefixed with `std/`.
+Stdlib modules are prefixed with `std/`. There are exactly two import styles -- no wildcard imports.
 
-**Namespaced import** — call functions as `module/function()`:
+**Namespaced import** -- call functions as `module/function()`:
 
 ```
 use "std/math"
@@ -15,12 +15,38 @@ use "std/math"
 >> math/floor(3.7)   -- 3
 ```
 
-**Specific import** — import one function:
+**Specific import** -- import one function:
 
 ```
 use "std/math/sqrt"
 
 >> sqrt(16)      -- 4
+```
+
+These are the only two import styles. There are no wildcard or bulk imports.
+
+## Public and Private Functions
+
+Functions in modules are **private by default**. Only functions marked with `pub` are accessible when the module is imported.
+
+```
+-- In mylib.sx
+
+-- Private: only usable inside mylib.sx
+fn (num x) num helper:
+    x * 2
+
+-- Public: exported when someone imports mylib
+pub fn (num x) num double:
+    helper(x)
+```
+
+```
+-- In main.sx
+use "mylib.sx"
+
+>> mylib/double(5)     -- 10
+-- mylib/helper(5)     -- Error: helper is not exported
 ```
 
 ## Standard Library
@@ -66,6 +92,13 @@ use "std/string"
 >> string/split("a,b,c", ",")              -- ["a", "b", "c"]
 >> string/replace("hello world", "world", "Sintax")  -- hello Sintax
 >> string/join(["a", "b", "c"], "-")       -- a-b-c
+>> string/trim("  hello  ")                -- hello
+>> string/slice("hello", 1, 3)             -- el
+>> string/index_of("hello", "ll")          -- 2
+>> string/reverse("hello")                 -- olleh
+>> string/repeat("ha", 3)                  -- hahaha
+>> string/char_code("A")                   -- 65
+>> string/from_char_code(65)               -- A
 ```
 
 ### std/json
@@ -93,6 +126,7 @@ use "std/os"
 content = os/read("file.txt")
 os/write("out.txt", "hello")
 >> os/exists("file.txt")     -- true
+os/rename("old.txt", "new.txt")
 
 -- Environment
 >> os/getenv("HOME")
@@ -102,7 +136,60 @@ output = os/exec("ls -la")
 >> os/cwd()
 
 -- Time
->> os/time()    -- unix timestamp
+>> os/time()           -- unix timestamp
+>> os/format_time(os/time())
+
+-- Control
+os/sleep(1000)         -- sleep 1 second
+os/exit(0)             -- exit program
+```
+
+### std/list
+
+List manipulation functions.
+
+```
+use "std/list"
+
+>> list/concat([1, 2], [3, 4])      -- [1, 2, 3, 4]
+>> list/insert([1, 3], 1, 2)        -- [1, 2, 3]
+>> list/reverse([1, 2, 3])          -- [3, 2, 1]
+>> list/index_of([10, 20, 30], 20)  -- 1
+>> list/slice([1, 2, 3, 4], 1, 3)   -- [2, 3]
+```
+
+### std/dict
+
+Dict manipulation functions.
+
+```
+use "std/dict"
+
+>> dict/delete({"a": 1, "b": 2}, "a")              -- {"b": 2}
+>> dict/merge({"a": 1}, {"b": 2})                   -- {"a": 1, "b": 2}
+```
+
+### std/regex
+
+Regular expression functions.
+
+```
+use "std/regex"
+
+>> regex/match("hello123", "[0-9]+")                         -- true
+>> regex/find("hello123world456", "[0-9]+")                  -- ["123", "456"]
+>> regex/replace("hello world", "world", "Sintax")           -- hello Sintax
+```
+
+### std/http
+
+HTTP client functions.
+
+```
+use "std/http"
+
+response = http/request("GET", "https://api.example.com/data", "", {})
+>> response
 ```
 
 ## User Modules

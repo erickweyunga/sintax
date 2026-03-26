@@ -1,6 +1,6 @@
 # Data Types
 
-Sintax has six core data types.
+Sintax has eight core data types.
 
 ## num
 
@@ -38,7 +38,7 @@ x /= 4    -- x is 6
 
 Strings are sequences of characters. Sintax has two kinds of string literals.
 
-**Double-quoted** — supports escape sequences and interpolation:
+**Double-quoted** -- supports escape sequences and interpolation:
 
 ```
 >> "Hello, World!"
@@ -49,7 +49,7 @@ name = "Eric"
 >> "say \"hi\""          -- escaped quote
 ```
 
-**Single-quoted** — raw, no escapes or interpolation:
+**Single-quoted** -- raw, no escapes or interpolation:
 
 ```
 >> 'Hello, World!'
@@ -191,6 +191,46 @@ Dict methods:
 >> {"a": 1}.values()     -- [1]
 ```
 
+## void
+
+`void` indicates that a function returns nothing. It is used only as a function return type, not as a value you can assign.
+
+```
+fn (str msg) void log:
+    >> msg
+
+log("hello")    -- prints: hello
+```
+
+## fn
+
+`fn` is the type for function values. Use it when a function returns another function or accepts a function as a parameter.
+
+```
+fn () fn make_counter:
+    count = 0
+    fn () num inc:
+        count = count + 1
+        return count
+    return inc
+
+counter = make_counter()
+>> counter()    -- 1
+>> counter()    -- 2
+```
+
+## Union Types
+
+Functions can return multiple possible types using `|`:
+
+```
+fn (str s) dict | list | str | num | bool parse:
+    use "std/json"
+    return json/parse(s)
+```
+
+Union types are used in function return type declarations when the return value may be one of several types.
+
 ## null
 
 `null` represents the absence of a value.
@@ -199,8 +239,6 @@ Dict methods:
 >> null
 >> type(null)    -- null
 ```
-
-Functions that don't return a value return `null`.
 
 ## Truthiness
 

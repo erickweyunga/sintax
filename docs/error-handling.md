@@ -1,6 +1,6 @@
 # Error Handling
 
-Sintax handles errors with `error()`, `err()`, and `match/case`.
+Sintax handles errors with `error()`, `err()`, `catch`, and `match/case`.
 
 ## Creating Errors
 
@@ -21,6 +21,31 @@ e = error("bad")
 >> err(e)       -- true
 >> err(42)      -- false
 >> err("hello") -- false
+```
+
+## catch Statement
+
+`catch` is a shorthand for calling a function and handling errors inline. If the result is an error, the body executes. Otherwise, the variable holds the successful value.
+
+```
+use "std/os"
+
+catch content = os/read("config.txt"):
+    >> "Failed to read config: " + str(content)
+
+>> content
+```
+
+`catch` reduces boilerplate compared to the `if err()` pattern:
+
+```
+use "std/json"
+
+catch data = json/parse(raw_input):
+    >> "Invalid JSON"
+    return error("parse failed")
+
+>> data["name"]
 ```
 
 ## Error Handling with match
@@ -45,7 +70,7 @@ match err(result):
 Functions can return error values instead of crashing:
 
 ```
-fn (num a, num b) divide:
+fn (num a, num b) num divide:
     if b == 0:
         return error("division by zero")
     return a / b
@@ -56,6 +81,13 @@ match err(result):
         >> result    -- error: division by zero
     case false:
         >> result
+```
+
+Or using `catch`:
+
+```
+catch result = divide(10, 0):
+    >> "Cannot divide: " + str(result)
 ```
 
 ## Error Truthiness
@@ -93,26 +125,34 @@ if err(content):
     >> "File not found"
 ```
 
+Using `catch` for cleaner handling:
+
+```
+use "std/os"
+
+catch content = os/read("missing.txt"):
+    >> "File not found"
+```
+
 ## Pattern: Safe Operations
 
 ```
-fn (str path) safe_read:
+fn (str path) str safe_read:
     use "std/os"
     if not os/exists(path):
         return error("file not found: " + path)
     return os/read(path)
 
-result = safe_read("data.json")
-match err(result):
-    case true:
-        >> result
-    case false:
-        >> "Got " + str(len(result)) + " bytes"
+catch result = safe_read("data.json"):
+    >> result
+
+>> "Got " + str(len(result)) + " bytes"
 ```
 
-## When to Use error()
+## When to Use What
 
+- **`catch`** -- concise error handling for a single call, handle and continue
+- **`match err()`** -- when you need distinct branches for success vs. failure
+- **`if err()`** -- simple inline checks
 - Return `error()` from functions instead of crashing
-- Check with `err()` before using the result
-- Branch with `match` for clean error handling
-- Don't use for control flow — errors are for exceptional conditions
+- Don't use errors for control flow -- errors are for exceptional conditions

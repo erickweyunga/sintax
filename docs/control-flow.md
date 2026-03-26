@@ -41,7 +41,7 @@ match day:
         >> "Midweek"
 ```
 
-`_` is the default case — it runs when nothing else matches.
+`_` is the default case -- it runs when nothing else matches.
 
 Match works with any type:
 
@@ -65,6 +65,43 @@ match err(result):
         >> "Error occurred"
     case false:
         >> "Success"
+```
+
+## catch
+
+`catch` is a shorthand for calling a function and handling errors inline. If the result is an error, the body executes. Otherwise, the variable holds the successful value.
+
+```
+use "std/os"
+
+catch result = os/read("file.txt"):
+    >> "failed: " + str(result)
+
+>> result
+```
+
+This is equivalent to:
+
+```
+use "std/os"
+
+result = os/read("file.txt")
+if err(result):
+    >> "failed: " + str(result)
+
+>> result
+```
+
+`catch` is useful for concise error handling when you want to handle the error and continue:
+
+```
+use "std/json"
+
+catch data = json/parse(raw_input):
+    >> "Invalid JSON"
+    return error("parse failed")
+
+>> data["name"]
 ```
 
 ## while

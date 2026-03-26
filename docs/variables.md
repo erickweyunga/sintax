@@ -1,19 +1,23 @@
 # Variables
 
-## Dynamic Variables
+## Type Inference
 
-Assign any value without declaring a type. The variable takes whatever type you give it.
+Variables infer their type from the first assignment. Once a variable has a type, it cannot be reassigned to a different type.
 
 ```
-x = 42
-name = "Eric"
-items = [1, 2, 3]
-x = "now a string"    -- allowed, x changes type
+x = 42              -- x is num (inferred)
+name = "Eric"       -- name is str (inferred)
+items = [1, 2, 3]   -- items is list (inferred)
+
+x = 100             -- ok, still num
+x = "hello"         -- Error: Type mismatch: 'x' is num, cannot assign str
 ```
 
-## Typed Variables
+This means every variable is effectively typed from its first use, even without an explicit type annotation.
 
-Declare a type to enforce it. Once typed, the variable can only hold values of that type.
+## Explicit Type Annotations
+
+You can also declare a type explicitly. This works the same as inference but makes the intent clear.
 
 ```
 num x = 42
@@ -31,21 +35,17 @@ x = 100        -- ok, still num
 x = "hello"    -- Error: Type mismatch: 'x' is num, cannot assign str
 ```
 
-## When to Use Typed Variables
+## When to Use Explicit Types
 
-Use typed variables when you want safety — the analyzer catches type mismatches before your code runs.
+Use explicit type annotations when you want to document intent. The compiler enforces types either way.
 
 ```
 num score = 0
 score += 10        -- ok
-score = "high"     -- caught by analyzer
+score = "high"     -- caught by compiler
 ```
 
-Use dynamic variables when the type may change or you don't need enforcement.
-
-```
-result = input("Enter value: ")    -- could be num or str
-```
+Since types are inferred automatically, explicit annotations are optional but recommended for clarity at the top of a function or module.
 
 ## Scope
 
@@ -54,7 +54,7 @@ Variables defined at the top level are visible everywhere. Variables defined ins
 ```
 x = "global"
 
-fn () show:
+fn () void show:
     y = "local"
     >> x       -- can see global
     >> y       -- can see local
@@ -64,7 +64,7 @@ show()
 -- >> y        -- Error: y not defined here
 ```
 
-Variables defined inside `if`, `while`, `for`, and `match` blocks are visible in the enclosing scope — these blocks do not create new scopes.
+Variables defined inside `if`, `while`, `for`, and `match` blocks are visible in the enclosing scope -- these blocks do not create new scopes.
 
 ```
 if true:
@@ -78,9 +78,9 @@ if true:
 Functions capture variables from their enclosing scope. Changes to captured variables are shared.
 
 ```
-fn () make_counter:
+fn () fn make_counter:
     count = 0
-    fn () inc:
+    fn () num inc:
         count = count + 1
         return count
     return inc

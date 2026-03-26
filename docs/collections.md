@@ -59,28 +59,28 @@ items = [3, 1, 2]
 
 Transform lists without writing loops.
 
-**map** — apply a function to each element:
+**map** -- apply a function to each element:
 
 ```
 >> [1, 2, 3].map(fn(x) -> x * 2)        -- [2, 4, 6]
 >> ["hi", "hey"].map(fn(s) -> s.upper()) -- ["HI", "HEY"]
 ```
 
-**filter** — keep elements that pass a test:
+**filter** -- keep elements that pass a test:
 
 ```
 >> [1, 2, 3, 4, 5].filter(fn(x) -> x > 3)    -- [4, 5]
 >> ["cat", "dog", "cow"].filter(fn(s) -> s.starts_with("c"))  -- ["cat", "cow"]
 ```
 
-**reduce** — combine all elements into one value:
+**reduce** -- combine all elements into one value:
 
 ```
 >> [1, 2, 3, 4].reduce(fn(acc, x) -> acc + x, 0)     -- 10
 >> [1, 2, 3, 4].reduce(fn(acc, x) -> acc * x, 1)      -- 24
 ```
 
-**each** — run a function for side effects:
+**each** -- run a function for side effects:
 
 ```
 [1, 2, 3].each(fn(x) -> print("item:", x))
@@ -91,6 +91,20 @@ Transform lists without writing loops.
 ```
 >> 3 in [1, 2, 3]       -- true
 >> "x" in [1, 2, 3]     -- false
+```
+
+### std/list Functions
+
+The `std/list` module provides additional list operations:
+
+```
+use "std/list"
+
+>> list/concat([1, 2], [3, 4])      -- [1, 2, 3, 4]
+>> list/insert([1, 3], 1, 2)        -- [1, 2, 3]
+>> list/reverse([1, 2, 3])          -- [3, 2, 1]
+>> list/index_of([10, 20, 30], 20)  -- 1
+>> list/slice([1, 2, 3, 4], 1, 3)   -- [2, 3]
 ```
 
 ## Dicts
@@ -158,6 +172,17 @@ d = {"a": 1, "b": 2}
 >> d.keys()          -- ["a", "b"]
 >> d.values()        -- [1, 2]
 >> d.has("a")        -- true
+```
+
+### std/dict Functions
+
+The `std/dict` module provides additional dict operations:
+
+```
+use "std/dict"
+
+>> dict/delete({"a": 1, "b": 2}, "a")    -- {"b": 2}
+>> dict/merge({"a": 1}, {"b": 2})         -- {"a": 1, "b": 2}
 ```
 
 ### Membership

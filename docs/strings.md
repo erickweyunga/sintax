@@ -89,6 +89,68 @@ Join a list of values into a string with a separator.
 >> string/join([1, 2, 3], ", ")          -- 1, 2, 3
 ```
 
+### trim(str) -> str
+
+Remove leading and trailing whitespace.
+
+```
+>> string/trim("  hello  ")    -- hello
+>> string/trim("\t hi \n")     -- hi
+```
+
+### slice(str, num, num) -> str
+
+Extract a substring by start and end index.
+
+```
+>> string/slice("hello", 1, 3)    -- el
+>> string/slice("hello", 0, 2)    -- he
+```
+
+### index_of(str, str) -> num
+
+Find the index of a substring. Returns -1 if not found.
+
+```
+>> string/index_of("hello", "ll")     -- 2
+>> string/index_of("hello", "xyz")    -- -1
+```
+
+### reverse(str) -> str
+
+Reverse a string.
+
+```
+>> string/reverse("hello")    -- olleh
+```
+
+### repeat(str, num) -> str
+
+Repeat a string a given number of times.
+
+```
+>> string/repeat("ha", 3)     -- hahaha
+>> string/repeat("-", 10)     -- ----------
+```
+
+### char_code(str) -> num
+
+Get the character code of the first character.
+
+```
+>> string/char_code("A")      -- 65
+>> string/char_code("a")      -- 97
+```
+
+### from_char_code(num) -> str
+
+Convert a character code to a string.
+
+```
+>> string/from_char_code(65)   -- A
+>> string/from_char_code(97)   -- a
+```
+
 ## String Methods
 
 Strings also have built-in methods that can be called directly:
