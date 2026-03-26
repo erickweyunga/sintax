@@ -1,19 +1,19 @@
 -- HTTP standard library
 
-pub fn (str url) get:
+pub fn (str url) str get:
     return __native_http_request("GET", url, null, null)
 
-pub fn (str url, str body) post:
+pub fn (str url, str body) str post:
     return __native_http_request("POST", url, null, body)
 
-pub fn (str url, str body, dict headers) post_with_headers:
+pub fn (str url, str body, dict headers) str post_with_headers:
     return __native_http_request("POST", url, headers, body)
 
-pub fn (str url, str body) put:
+pub fn (str url, str body) str put:
     return __native_http_request("PUT", url, null, body)
 
-pub fn (str url) delete:
+pub fn (str url) str delete:
     return __native_http_request("DELETE", url, null, null)
 
-pub fn (str method, str url, dict headers, str body) request:
+pub fn (str method, str url, dict headers, str body) str request:
     return __native_http_request(method, url, headers, body)

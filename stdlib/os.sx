@@ -1,10 +1,10 @@
 -- OS standard library
 
 -- File I/O
-pub fn (str path) read:
+pub fn (str path) str read:
     return __native_read_file(path)
 
-pub fn (str path, data) write:
+pub fn (str path, str data) write:
     return __native_write_file(path, data)
 
 pub fn (str path) bool exists:
@@ -20,7 +20,7 @@ pub fn (str old, str new) rename:
 pub fn () str cwd:
     return __native_cwd()
 
-pub fn (str name) getenv:
+pub fn (str name) str getenv:
     return __native_getenv(name)
 
 pub fn (str cmd) str exec:
