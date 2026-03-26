@@ -80,7 +80,7 @@ SxValue* sx_null(void);
 SxValue* sx_list_new(void);
 SxValue* sx_dict_new(void);
 SxValue* sx_function(SxFnPtr fn);
-SxValue* sx_error_new(const char *msg);
+SxValue* sx_error_new(SxValue *msgVal);
 
 // Function calls
 SxValue* sx_call(SxValue *fn, SxValue **args, int argc);

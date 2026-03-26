@@ -230,27 +230,36 @@ var nativeOneArg = map[string]string{
 	"__native_ceil": "__native_ceil", "__native_round": "__native_round",
 	"__native_cbrt": "__native_cbrt",
 	"__native_upper": "__native_upper", "__native_lower": "__native_lower",
+	"__native_trim": "__native_trim", "__native_char_code": "__native_char_code",
+	"__native_from_char_code": "__native_from_char_code",
+	"__native_str_reverse": "__native_str_reverse",
+	"__native_list_reverse": "__native_list_reverse",
 	"__native_read_file": "__native_read_file", "__native_file_exists": "__native_file_exists",
 	"__native_delete_file": "__native_delete_file", "__native_getenv": "__native_getenv",
-	"__native_exec": "__native_exec",
+	"__native_exec": "__native_exec", "__native_sleep": "__native_sleep",
+	"__native_exit": "__native_exit",
 	"__native_json_parse": "__native_json_parse", "__native_json_stringify": "__native_json_stringify",
 	"__native_json_pretty": "__native_json_pretty",
 }
 
 var nativeNoArg = map[string]string{
 	"__native_random": "__native_random",
-	"__native_cwd": "__native_cwd",
-	"__native_time": "__native_time",
+	"__native_cwd":    "__native_cwd",
+	"__native_time":   "__native_time",
 }
 
 var nativeTwoArg = map[string]string{
-	"__native_pow": "__native_pow",
-	"__native_split": "__native_split",
-	"__native_write_file": "__native_write_file",
+	"__native_pow": "__native_pow", "__native_split": "__native_split",
+	"__native_str_repeat": "__native_str_repeat", "__native_index_of": "__native_index_of",
+	"__native_list_concat": "__native_list_concat", "__native_dict_delete": "__native_dict_delete",
+	"__native_dict_merge": "__native_dict_merge", "__native_write_file": "__native_write_file",
+	"__native_format_time": "__native_format_time", "__native_rename": "__native_rename",
 }
 
 var nativeThreeArg = map[string]string{
-	"__native_replace": "__native_replace",
+	"__native_replace":    "__native_replace",
+	"__native_slice":       "__native_slice",
+	"__native_list_insert": "__native_list_insert",
 }
 
 // Builtin mappings

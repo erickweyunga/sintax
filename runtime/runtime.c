@@ -146,9 +146,16 @@ SxValue* sx_function(SxFnPtr fn) {
     return v;
 }
 
-SxValue* sx_error_new(const char *msg) {
+SxValue* sx_error_new(SxValue *msgVal) {
     SxValue *v = sx_alloc(SX_ERROR);
-    v->string = sx_strdup(msg);
+    if (msgVal && msgVal->type == SX_STRING) {
+        v->string = sx_strdup(msgVal->string);
+    } else if (msgVal) {
+        SxValue *s = sx_to_string(msgVal);
+        v->string = sx_strdup(s->string);
+    } else {
+        v->string = sx_strdup("error");
+    }
     return v;
 }
 

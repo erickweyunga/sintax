@@ -189,6 +189,26 @@ var runtimeDecls = []rtDecl{
 	{"__native_getenv", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_exec", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_time", sxValuePtr, nil},
+	// String building blocks
+	{"__native_trim", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_char_code", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_from_char_code", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_str_reverse", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_str_repeat", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_index_of", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_slice", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
+	// List building blocks
+	{"__native_list_concat", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_list_insert", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
+	{"__native_list_reverse", sxValuePtr, []types.Type{sxValuePtr}},
+	// Dict building blocks
+	{"__native_dict_delete", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_dict_merge", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	// System building blocks
+	{"__native_sleep", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_exit", sxValuePtr, []types.Type{sxValuePtr}},
+	{"__native_format_time", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_rename", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
 	// JSON
 	{"__native_json_parse", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_json_stringify", sxValuePtr, []types.Type{sxValuePtr}},

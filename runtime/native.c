@@ -193,14 +193,14 @@ SxValue* __native_replace(SxValue *v, SxValue *old, SxValue *new_) {
 SxValue* __native_read_file(SxValue *path) {
     expect_str(path, "read");
     FILE *f = fopen(path->string, "r");
-    if (!f) return sx_error_new("Cannot read file");
+    if (!f) return sx_error_new(sx_string("Cannot read file"));
 
     fseek(f, 0, SEEK_END);
     long len = ftell(f);
     if (len < 0) {
         fclose(f);
         f = fopen(path->string, "r");
-        if (!f) return sx_error_new("Cannot read file");
+        if (!f) return sx_error_new(sx_string("Cannot read file"));
         size_t cap = 4096, total = 0;
         char *buf = (char*)SX_MALLOC(cap);
         size_t n;
@@ -227,7 +227,7 @@ SxValue* __native_read_file(SxValue *path) {
 SxValue* __native_write_file(SxValue *path, SxValue *data) {
     expect_str(path, "write");
     FILE *f = fopen(path->string, "w");
-    if (!f) return sx_error_new("Cannot write file");
+    if (!f) return sx_error_new(sx_string("Cannot write file"));
     SxValue *s = sx_to_string(data);
     fputs(s->string, f);
     fclose(f);
@@ -242,7 +242,7 @@ SxValue* __native_file_exists(SxValue *path) {
 
 SxValue* __native_delete_file(SxValue *path) {
     expect_str(path, "delete");
-    if (remove(path->string) != 0) return sx_error_new("Cannot delete file");
+    if (remove(path->string) != 0) return sx_error_new(sx_string("Cannot delete file"));
     return sx_null();
 }
 
@@ -511,4 +511,256 @@ SxValue* __native_json_pretty(SxValue *v) {
     SxValue *r = sx_alloc(SX_STRING);
     r->string = buf;
     return r;
+}
+
+/* --- String building block natives --- */
+
+SxValue* __native_trim(SxValue *v) {
+    expect_str(v, "trim");
+    const char *s = v->string;
+    int len = strlen(s);
+    int start = 0, end = len - 1;
+    while (start < len && isspace((unsigned char)s[start])) start++;
+    while (end > start && isspace((unsigned char)s[end])) end--;
+    int newlen = end - start + 1;
+    if (newlen <= 0) return sx_string("");
+    char *buf = (char*)SX_MALLOC(newlen + 1);
+    memcpy(buf, s + start, newlen);
+    buf[newlen] = '\0';
+    SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
+}
+
+SxValue* __native_char_code(SxValue *v) {
+    expect_str(v, "char_code");
+    if (v->string[0] == '\0')
+        return sx_error_new(sx_string("char_code() called on empty string"));
+    return sx_number((double)(unsigned char)v->string[0]);
+}
+
+SxValue* __native_from_char_code(SxValue *v) {
+    expect_num(v, "from_char_code");
+    int code = (int)v->number;
+    if (code < 0 || code > 127) {
+        char buf[2] = {0, 0};
+        if (code >= 0 && code <= 0x7F) buf[0] = (char)code;
+        return sx_string(buf);
+    }
+    char buf[2] = {(char)code, '\0'};
+    return sx_string(buf);
+}
+
+SxValue* __native_str_reverse(SxValue *v) {
+    expect_str(v, "str_reverse");
+    int len = strlen(v->string);
+    char *buf = (char*)SX_MALLOC(len + 1);
+    for (int i = 0; i < len; i++)
+        buf[i] = v->string[len - 1 - i];
+    buf[len] = '\0';
+    SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
+}
+
+SxValue* __native_str_repeat(SxValue *v, SxValue *n) {
+    expect_str(v, "str_repeat");
+    expect_num(n, "str_repeat");
+    int count = (int)n->number;
+    if (count < 0) return sx_error_new(sx_string("str_repeat() count must be >= 0"));
+    int slen = strlen(v->string);
+    int total = slen * count;
+    char *buf = (char*)SX_MALLOC(total + 1);
+    for (int i = 0; i < count; i++)
+        memcpy(buf + i * slen, v->string, slen);
+    buf[total] = '\0';
+    SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
+}
+
+SxValue* __native_index_of(SxValue *haystack, SxValue *needle) {
+    if (haystack->type == SX_STRING) {
+        expect_str(needle, "index_of");
+        const char *found = strstr(haystack->string, needle->string);
+        if (!found) return sx_number(-1);
+        return sx_number((double)(found - haystack->string));
+    }
+    if (haystack->type == SX_LIST) {
+        for (int i = 0; i < haystack->list.len; i++) {
+            SxValue *eq = sx_eq(haystack->list.items[i], needle);
+            if (eq->boolean) return sx_number((double)i);
+        }
+        return sx_number(-1);
+    }
+    sx_error("index_of() requires a str or list");
+    return sx_null();
+}
+
+static int clamp_idx(int idx, int len) {
+    if (idx < 0) idx = len + idx;
+    if (idx < 0) idx = 0;
+    if (idx > len) idx = len;
+    return idx;
+}
+
+SxValue* __native_slice(SxValue *v, SxValue *start_v, SxValue *end_v) {
+    expect_num(start_v, "slice");
+    expect_num(end_v, "slice");
+    int s = (int)start_v->number;
+    int e = (int)end_v->number;
+
+    if (v->type == SX_STRING) {
+        int len = strlen(v->string);
+        s = clamp_idx(s, len);
+        e = clamp_idx(e, len);
+        if (s >= e) return sx_string("");
+        int newlen = e - s;
+        char *buf = (char*)SX_MALLOC(newlen + 1);
+        memcpy(buf, v->string + s, newlen);
+        buf[newlen] = '\0';
+        SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
+    }
+    if (v->type == SX_LIST) {
+        int len = v->list.len;
+        s = clamp_idx(s, len);
+        e = clamp_idx(e, len);
+        SxValue *list = sx_list_new();
+        for (int i = s; i < e; i++)
+            sx_list_append(list, v->list.items[i]);
+        return list;
+    }
+    sx_error("slice() requires a str or list");
+    return sx_null();
+}
+
+/* --- List building block natives --- */
+
+SxValue* __native_list_concat(SxValue *a, SxValue *b) {
+    if (!a || a->type != SX_LIST) sx_error("list_concat() first arg must be a list");
+    if (!b || b->type != SX_LIST) sx_error("list_concat() second arg must be a list");
+    SxValue *list = sx_list_new();
+    for (int i = 0; i < a->list.len; i++)
+        sx_list_append(list, a->list.items[i]);
+    for (int i = 0; i < b->list.len; i++)
+        sx_list_append(list, b->list.items[i]);
+    return list;
+}
+
+SxValue* __native_list_insert(SxValue *list, SxValue *idx_v, SxValue *item) {
+    if (!list || list->type != SX_LIST) sx_error("list_insert() first arg must be a list");
+    expect_num(idx_v, "list_insert");
+    int idx = (int)idx_v->number;
+    int len = list->list.len;
+    if (idx < 0) idx = len + idx;
+    if (idx < 0) idx = 0;
+    if (idx > len) idx = len;
+    // Grow
+    if (list->list.len >= list->list.cap) {
+        list->list.cap = list->list.cap ? list->list.cap * 2 : 4;
+        list->list.items = (SxValue**)SX_REALLOC(list->list.items,
+            sizeof(SxValue*) * list->list.cap);
+    }
+    // Shift
+    for (int i = list->list.len; i > idx; i--)
+        list->list.items[i] = list->list.items[i - 1];
+    list->list.items[idx] = item;
+    list->list.len++;
+    return list;
+}
+
+SxValue* __native_list_reverse(SxValue *list) {
+    if (!list || list->type != SX_LIST) sx_error("list_reverse() requires a list");
+    int len = list->list.len;
+    for (int i = 0, j = len - 1; i < j; i++, j--) {
+        SxValue *tmp = list->list.items[i];
+        list->list.items[i] = list->list.items[j];
+        list->list.items[j] = tmp;
+    }
+    return list;
+}
+
+/* --- Dict building block natives --- */
+
+SxValue* __native_dict_delete(SxValue *dict, SxValue *key) {
+    if (!dict || dict->type != SX_DICT) sx_error("dict_delete() first arg must be a dict");
+    expect_str(key, "dict_delete");
+    SxDictBucket *b = sx_dict_find(&dict->dict, key->string);
+    if (!b || !b->used) return sx_null();
+    SxValue *removed = b->value;
+    // Mark bucket as unused in hash table
+    SX_FREE(b->key);
+    b->key = NULL;
+    b->value = NULL;
+    b->used = 0;
+    // Remove from insertion-order keys array
+    for (int i = 0; i < dict->dict.len; i++) {
+        if (strcmp(dict->dict.keys[i], key->string) == 0) {
+            SX_FREE(dict->dict.keys[i]);
+            for (int j = i; j < dict->dict.len - 1; j++)
+                dict->dict.keys[j] = dict->dict.keys[j + 1];
+            dict->dict.len--;
+            break;
+        }
+    }
+    return removed;
+}
+
+SxValue* __native_dict_merge(SxValue *a, SxValue *b) {
+    if (!a || a->type != SX_DICT) sx_error("dict_merge() first arg must be a dict");
+    if (!b || b->type != SX_DICT) sx_error("dict_merge() second arg must be a dict");
+    for (int i = 0; i < b->dict.len; i++) {
+        SxDictBucket *bkt = sx_dict_find(&b->dict, b->dict.keys[i]);
+        if (bkt) {
+            SxValue *k = sx_string(b->dict.keys[i]);
+            sx_dict_set(a, k, bkt->value);
+        }
+    }
+    return a;
+}
+
+/* --- System building block natives --- */
+
+SxValue* __native_sleep(SxValue *ms) {
+    expect_num(ms, "sleep");
+    if (ms->number < 0) return sx_error_new(sx_string("sleep() duration must be >= 0"));
+    struct timespec ts;
+    ts.tv_sec = (time_t)(ms->number / 1000);
+    ts.tv_nsec = (long)((long long)(ms->number) % 1000 * 1000000);
+    nanosleep(&ts, NULL);
+    return sx_null();
+}
+
+SxValue* __native_exit(SxValue *code) {
+    expect_num(code, "exit");
+    exit((int)code->number);
+    return sx_null();
+}
+
+SxValue* __native_format_time(SxValue *ts, SxValue *fmt) {
+    expect_num(ts, "format_time");
+    expect_str(fmt, "format_time");
+    time_t t = (time_t)ts->number;
+    struct tm *tm = localtime(&t);
+    char buf[256];
+    // Map Sintax tokens to strftime
+    // Build a strftime format string from the Sintax format
+    const char *src = fmt->string;
+    char sfmt[256];
+    int j = 0;
+    for (int i = 0; src[i] && j < 250; ) {
+        if (strncmp(src + i, "YYYY", 4) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'Y'; i += 4; }
+        else if (strncmp(src + i, "MM", 2) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'm'; i += 2; }
+        else if (strncmp(src + i, "DD", 2) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'd'; i += 2; }
+        else if (strncmp(src + i, "hh", 2) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'H'; i += 2; }
+        else if (strncmp(src + i, "mm", 2) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'M'; i += 2; }
+        else if (strncmp(src + i, "ss", 2) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'S'; i += 2; }
+        else if (strncmp(src + i, "tz", 2) == 0) { sfmt[j++] = '%'; sfmt[j++] = 'Z'; i += 2; }
+        else sfmt[j++] = src[i++];
+    }
+    sfmt[j] = '\0';
+    strftime(buf, sizeof(buf), sfmt, tm);
+    return sx_string(buf);
+}
+
+SxValue* __native_rename(SxValue *old, SxValue *new_) {
+    expect_str(old, "rename");
+    expect_str(new_, "rename");
+    if (rename(old->string, new_->string) != 0)
+        return sx_error_new(sx_string("Cannot rename file"));
+    return sx_null();
 }

@@ -107,6 +107,34 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	cg.block = prevBlock
 	cg.vars = prevVars
 	cg.scopes = prevScopes
+
+	// If this function was defined inside another function (nested),
+	// store a reference to it as a variable in the enclosing scope
+	// so it can be returned or passed around.
+	if prevFn != nil && prevFn.Name() != "main" || (prevFn != nil && prevBlock != nil) {
+		// Create a wrapper lambda that delegates to the compiled function
+		cg.lambdaCounter++
+		wrapperName := fmt.Sprintf("sx_wrap_%s_%d", fd.Name, cg.lambdaCounter)
+		argsPtrType := types.NewPointer(sxValuePtr)
+		wrapper := cg.mod.NewFunc(wrapperName, sxValuePtr,
+			ir.NewParam("args", argsPtrType),
+			ir.NewParam("argc", i32),
+		)
+		wEntry := wrapper.NewBlock("entry")
+		// Extract args and call the real function
+		callArgs := make([]llvmValue.Value, len(fd.Params))
+		for i := range fd.Params {
+			argPtr := wEntry.NewGetElementPtr(sxValuePtr, wrapper.Params[0], constant.NewInt(i32, int64(i)))
+			callArgs[i] = wEntry.NewLoad(sxValuePtr, argPtr)
+		}
+		result := wEntry.NewCall(fn, callArgs...)
+		wEntry.NewRet(result)
+
+		// Store as a variable in the current scope
+		fnPtr := cg.block.NewBitCast(wrapper, sxValuePtr)
+		fnVal := cg.callRT("sx_function", fnPtr)
+		cg.setVar(fd.Name, fnVal)
+	}
 }
 
 func (cg *CodeGen) compileIfStmt(ifStmt *parser.IfStmt) {
