@@ -151,6 +151,7 @@ var runtimeDecls = []rtDecl{
 	{"sx_dict_has", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
 	// Utilities
 	{"sx_len", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_sort", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_type", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_range", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
 	{"sx_to_number", sxValuePtr, []types.Type{sxValuePtr}},

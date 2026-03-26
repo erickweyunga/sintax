@@ -610,6 +610,31 @@ SxValue* sx_list_remove(SxValue *list, SxValue *index) {
     return removed;
 }
 
+// --- Sort ---
+
+static int sx_compare(const void *a, const void *b) {
+    SxValue *va = *(SxValue**)a;
+    SxValue *vb = *(SxValue**)b;
+    // Numbers compare by value
+    if (va->type == SX_NUMBER && vb->type == SX_NUMBER) {
+        if (va->number < vb->number) return -1;
+        if (va->number > vb->number) return 1;
+        return 0;
+    }
+    // Strings compare alphabetically
+    if (va->type == SX_STRING && vb->type == SX_STRING) {
+        return strcmp(va->string, vb->string);
+    }
+    // Mixed types: compare by type tag
+    return va->type - vb->type;
+}
+
+SxValue* sx_sort(SxValue *list) {
+    if (!list || list->type != SX_LIST) sx_error("sort() requires a list");
+    qsort(list->list.items, list->list.len, sizeof(SxValue*), sx_compare);
+    return list;
+}
+
 // --- Dict operations (hash table) ---
 
 SxValue* sx_dict_get(SxValue *dict, SxValue *key) {

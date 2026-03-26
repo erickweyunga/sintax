@@ -205,13 +205,24 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 		} else if s.Method != nil {
 			mc := s.Method
 			nameStr := cg.globalString(mc.Name)
-			if len(mc.Args) == 0 {
+			argc := len(mc.Args)
+			if argc == 0 {
 				result = cg.callRT("sx_method", result, nameStr, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
 			} else {
-				arg0 := cg.compileExpr(mc.Args[0])
-				argPtr := cg.block.NewAlloca(sxValuePtr)
-				cg.block.NewStore(arg0, argPtr)
-				result = cg.callRT("sx_method", result, nameStr, argPtr, constant.NewInt(i32, int64(len(mc.Args))))
+				// Allocate array with enough slots for ALL arguments
+				argArray := cg.block.NewAlloca(types.NewArray(uint64(argc), sxValuePtr))
+				for i, arg := range mc.Args {
+					val := cg.compileExpr(arg)
+					ptr := cg.block.NewGetElementPtr(
+						types.NewArray(uint64(argc), sxValuePtr),
+						argArray,
+						constant.NewInt(i64, 0),
+						constant.NewInt(i64, int64(i)),
+					)
+					cg.block.NewStore(val, ptr)
+				}
+				argPtr := cg.block.NewBitCast(argArray, types.NewPointer(sxValuePtr))
+				result = cg.callRT("sx_method", result, nameStr, argPtr, constant.NewInt(i32, int64(argc)))
 			}
 		}
 	}
@@ -273,6 +284,7 @@ var oneArgBuiltins = map[string]string{
 	"bool":   "sx_to_bool",
 	"err":    "sx_is_error",
 	"error":  "sx_error_new",
+	"sort":   "sx_sort",
 }
 
 var twoArgBuiltins = map[string]string{
@@ -309,9 +321,6 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 			return cg.callRT("sx_input", cg.compileExpr(fc.Args[0]))
 		}
 		return cg.callRT("sx_input", cg.callRT("sx_null"))
-	case "try":
-		// try(expr) — compile the expression, if it's a function call wrap with sx_try
-		return cg.compileExpr(fc.Args[0]) // simplified: no error catching in compiled mode yet
 	}
 
 	// Native bridge: __native_* → C runtime
@@ -337,15 +346,23 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.block.NewCall(fn, args...)
 	}
 
-	// Variable that might be a lambda/function value
+	// Variable that might be a lambda/function value — call via sx_call
 	val := cg.getVar(fc.Name)
-	// Compile args into an array
-	if len(fc.Args) > 0 {
-		argArray := cg.block.NewAlloca(sxValuePtr)
-		// For single arg
-		arg0 := cg.compileExpr(fc.Args[0])
-		cg.block.NewStore(arg0, argArray)
-		return cg.callRT("sx_call", val, argArray, constant.NewInt(i32, int64(len(fc.Args))))
+	argc := len(fc.Args)
+	if argc > 0 {
+		argArray := cg.block.NewAlloca(types.NewArray(uint64(argc), sxValuePtr))
+		for i, arg := range fc.Args {
+			compiled := cg.compileExpr(arg)
+			ptr := cg.block.NewGetElementPtr(
+				types.NewArray(uint64(argc), sxValuePtr),
+				argArray,
+				constant.NewInt(i64, 0),
+				constant.NewInt(i64, int64(i)),
+			)
+			cg.block.NewStore(compiled, ptr)
+		}
+		argPtr := cg.block.NewBitCast(argArray, types.NewPointer(sxValuePtr))
+		return cg.callRT("sx_call", val, argPtr, constant.NewInt(i32, int64(argc)))
 	}
 	return cg.callRT("sx_call", val, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
 }

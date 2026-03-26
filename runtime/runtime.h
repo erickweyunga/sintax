@@ -126,6 +126,9 @@ SxValue* sx_list_get(SxValue *list, SxValue *index);
 void sx_list_set(SxValue *list, SxValue *index, SxValue *val);
 SxValue* sx_list_remove(SxValue *list, SxValue *index);
 
+// Sort
+SxValue* sx_sort(SxValue *list);
+
 // Dict operations
 SxDictBucket* sx_dict_find(SxDict *d, const char *key);
 SxValue* sx_dict_get(SxValue *dict, SxValue *key);
