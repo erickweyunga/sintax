@@ -805,7 +805,14 @@ SxValue* sx_to_string(SxValue *v) {
         case SX_STRING: return v;
         case SX_BOOL: return sx_string(v->boolean ? "true" : "false");
         case SX_NULL: return sx_string("null");
-        case SX_ERROR: return sx_string(v->string);
+        case SX_ERROR: {
+            int len = strlen(v->string) + 8;
+            char *buf = (char*)SX_MALLOC(len);
+            snprintf(buf, len, "error: %s", v->string);
+            SxValue *r = sx_alloc(SX_STRING);
+            r->string = buf;
+            return r;
+        }
         default: return sx_string("<object>");
     }
 }

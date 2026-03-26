@@ -13,42 +13,30 @@ import (
 
 const cacheDir = ".sintax"
 
-func runCompiledCommand() {
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: sintax run <file.sx>\n")
-		os.Exit(1)
-	}
-
-	filename := os.Args[2]
-
-	// Read source
+// compileAndRun compiles a .sx file (with caching) and runs the binary.
+func compileAndRun(filename string) {
 	source, err := os.ReadFile(filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: File '%s' not found\n", filename)
 		os.Exit(1)
 	}
 
-	// Ensure .sintax/ exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Cannot create %s directory\n", cacheDir)
 		os.Exit(1)
 	}
 
-	// Binary name: .sintax/<hash>
 	baseName := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
 	hash := fmt.Sprintf("%x", sha256.Sum256(source))[:12]
 	binaryPath := filepath.Join(cacheDir, baseName+"_"+hash)
 
-	// Check cache — if binary exists and is newer than source, reuse it
 	if isCached(binaryPath, filename) {
 		execBinary(binaryPath)
 		return
 	}
 
-	// Compile
 	program, sourceStr, result := parseFile(filename)
 
-	// Analyze before compiling
 	srcLines := strings.Split(sourceStr, "\n")
 	if errors := analyzeProgram(program, result, filename, srcLines); len(errors) > 0 {
 		printErrors(errors)
@@ -83,7 +71,6 @@ func runCompiledCommand() {
 	args = append(args, cFiles...)
 	args = append(args, "-lm")
 
-	// Check for Boehm GC
 	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
 		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
 		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
@@ -102,10 +89,7 @@ foundGC:
 		os.Exit(1)
 	}
 
-	// Clean up IR
 	os.Remove(irFile)
-
-	// Run the binary
 	execBinary(binaryPath)
 }
 

@@ -20,14 +20,14 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "run":
-		runCompiledCommand()
 	case "build":
 		buildCommand()
 	case "check":
 		checkCommand()
 	case "test":
 		testCommand()
+	case "eval":
+		evalCommand()
 	case "lib":
 		libCommand()
 	case "lsp":
@@ -35,16 +35,32 @@ func main() {
 	case "help", "--help", "-h":
 		printHelp()
 	default:
-		interpretCommand()
+		// Default: compile and run
+		runCommand()
 	}
 }
 
-func interpretCommand() {
+// runCommand compiles and runs a .sx file (with caching).
+func runCommand() {
 	filename := os.Args[1]
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error: File '%s' not found\n", filename)
+		os.Exit(1)
+	}
+	compileAndRun(filename)
+}
+
+// evalCommand runs a file through the Go interpreter (dev/debug only).
+func evalCommand() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: sintax eval <file.sx>\n")
+		os.Exit(1)
+	}
+
+	filename := os.Args[2]
 	program, sourceStr, result := parseFile(filename)
 	lines := strings.Split(sourceStr, "\n")
 
-	// Analyze before running
 	if errors := analyzeProgram(program, result, filename, lines); len(errors) > 0 {
 		printErrors(errors)
 		if hasErrors(errors) {
@@ -137,20 +153,20 @@ func hasErrors(errors []analyzer.Error) bool {
 }
 
 func printHelp() {
-	fmt.Println("Sintax")
+	fmt.Println("Sintax — a compiled programming language")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  sintax                     REPL")
-	fmt.Println("  sintax <file.sx>           Analyze and interpret")
-	fmt.Println("  sintax check <file.sx>     Analyze only (no run)")
-	fmt.Println("  sintax run <file.sx>       Compile and run (cached)")
+	fmt.Println("  sintax <file.sx>           Compile and run")
 	fmt.Println("  sintax build <file.sx>     Compile to binary")
 	fmt.Println("  sintax build <f.sx> -o out Compile with custom name")
+	fmt.Println("  sintax check <file.sx>     Analyze only (no run)")
 	fmt.Println("  sintax test                Test all .sx files")
 	fmt.Println("  sintax test <file.sx>      Test specific file")
+	fmt.Println("  sintax eval <file.sx>      Interpret (dev/debug)")
 	fmt.Println("  sintax lib                 List libraries")
 	fmt.Println("  sintax lib <name>          Library details")
 	fmt.Println("  sintax lsp                 Start LSP server")
+	fmt.Println("  sintax                     REPL")
 	fmt.Println("  sintax help                Show help")
 }
 

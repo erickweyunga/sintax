@@ -3,23 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/erickweyunga/sintax/evaluator"
-	"github.com/erickweyunga/sintax/object"
+	"github.com/erickweyunga/sintax/codegen"
 	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
 )
 
 const (
-	green  = "\033[32m"
-	red    = "\033[31m"
-	yellow = "\033[33m"
-	dim    = "\033[2m"
-	bold   = "\033[1m"
-	reset  = "\033[0m"
+	green = "\033[32m"
+	red   = "\033[31m"
+	dim   = "\033[2m"
+	reset = "\033[0m"
 )
 
 type TestCase struct {
@@ -72,7 +70,6 @@ func testCommand() {
 
 	totalDuration := time.Since(totalStart)
 
-	// Print results
 	fmt.Println()
 	totalTests := 0
 	totalPassed := 0
@@ -129,6 +126,8 @@ func extractTests(filename string) []TestCase {
 	return tests
 }
 
+// runTestFile generates a test program from the source + assertions,
+// compiles it to a native binary, runs it, and parses PASS/FAIL output.
 func runTestFile(filename string, tests []TestCase) FileResult {
 	start := time.Now()
 	r := FileResult{Name: filename, Tests: len(tests)}
@@ -137,10 +136,12 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	sourceStr := string(source)
 	result := preprocessor.Process(sourceStr)
 
-	_ = evaluator.RegisterImports(result.Imports)
+	// Build the test program: original source + compiled assertions
+	testSource := buildTestProgram(sourceStr, tests, result.Imports)
+	testResult := preprocessor.Process(testSource)
 
 	p := parser.NewParser()
-	program, err := p.ParseString(filename, result.Source)
+	program, err := p.ParseString(filename, testResult.Source)
 	if err != nil {
 		r.Failed = len(tests)
 		r.Failures = append(r.Failures, fmt.Sprintf("Syntax error: %s", err.Error()))
@@ -148,15 +149,53 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 		return r
 	}
 
-	env := evaluator.NewEnvironment()
-	evaluator.EvalDefinitionsOnly(program, env)
+	// Compile to binary
+	cg := codegen.New()
+	compileImports(cg, testResult.Imports)
+	llvmIR := cg.Generate(program)
+
+	tmpDir, _ := os.MkdirTemp("", "sx-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	irFile := filepath.Join(tmpDir, "test.ll")
+	binFile := filepath.Join(tmpDir, "test")
+	os.WriteFile(irFile, []byte(llvmIR), 0644)
+
+	if err := compileToNative(irFile, binFile); err != nil {
+		r.Failed = len(tests)
+		r.Failures = append(r.Failures, fmt.Sprintf("Compile error: %s", err.Error()))
+		r.Duration = time.Since(start)
+		return r
+	}
+
+	// Run and parse output
+	runCmd := exec.Command(binFile)
+	output, runErr := runCmd.CombinedOutput()
+	outputStr := string(output)
+
+	resultMap := make(map[int]bool)
+	for _, line := range strings.Split(strings.TrimSpace(outputStr), "\n") {
+		line = strings.TrimSpace(line)
+		var lineNum int
+		if strings.HasPrefix(line, "PASS ") {
+			fmt.Sscanf(line, "PASS %d", &lineNum)
+			resultMap[lineNum] = true
+		} else if strings.HasPrefix(line, "FAIL ") {
+			fmt.Sscanf(line, "FAIL %d", &lineNum)
+			resultMap[lineNum] = false
+		}
+	}
 
 	for _, tc := range tests {
-		if runSingleTest(tc, env, result.Imports) {
+		if passed, ok := resultMap[tc.Line]; ok && passed {
 			r.Passed++
 		} else {
 			r.Failed++
-			r.Failures = append(r.Failures, fmt.Sprintf("line %d: %s", tc.Line, tc.Expr))
+			reason := fmt.Sprintf("line %d: %s", tc.Line, tc.Expr)
+			if runErr != nil && len(resultMap) == 0 {
+				reason += " (runtime crash)"
+			}
+			r.Failures = append(r.Failures, reason)
 		}
 	}
 
@@ -164,20 +203,58 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	return r
 }
 
-func runSingleTest(tc TestCase, env *evaluator.Environment, imports []preprocessor.Import) bool {
-	testSource := preprocessor.RewriteLine(tc.Expr, imports) + "\n"
-	result := preprocessor.Process(testSource)
+// buildTestProgram appends test assertions to the source code.
+// Each -- test: expr becomes: if expr: print("PASS N") else: print("FAIL N")
+func buildTestProgram(source string, tests []TestCase, imports []preprocessor.Import) string {
+	var b strings.Builder
+	b.WriteString(source)
+	b.WriteString("\n")
 
-	p := parser.NewParser()
-	program, err := p.ParseString("test", result.Source)
-	if err != nil {
-		return false
+	for _, tc := range tests {
+		// Rewrite namespace calls in test expressions
+		expr := preprocessor.RewriteLine(tc.Expr, imports)
+		b.WriteString(fmt.Sprintf("if %s:\n", expr))
+		b.WriteString(fmt.Sprintf("    print(\"PASS %d\")\n", tc.Line))
+		b.WriteString("else:\n")
+		b.WriteString(fmt.Sprintf("    print(\"FAIL %d\")\n", tc.Line))
 	}
 
-	val, err := evaluator.EvalWithEnv(program, env)
-	if err != nil {
-		return false
+	return b.String()
+}
+
+// compileToNative compiles an LLVM IR file to a native binary.
+func compileToNative(irFile, binFile string) error {
+	runtimePath := findRuntime()
+	runtimeDir := filepath.Dir(runtimePath)
+
+	cFiles := []string{runtimePath}
+	if entries, _ := os.ReadDir(runtimeDir); entries != nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".c") && e.Name() != "runtime.c" {
+				cFiles = append(cFiles, filepath.Join(runtimeDir, e.Name()))
+			}
+		}
 	}
 
-	return val != nil && object.IsTruthy(val)
+	args := []string{"-O2", "-Wno-override-module", "-o", binFile, irFile}
+	args = append(args, cFiles...)
+	args = append(args, "-lm")
+
+	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
+		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
+		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
+			if _, err := os.Stat(filepath.Join(gcLib, ext)); err == nil {
+				args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
+				goto foundGC
+			}
+		}
+	}
+foundGC:
+
+	cmd := exec.Command("clang", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }

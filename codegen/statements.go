@@ -206,14 +206,36 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 }
 
 // compileFuncBody compiles the statements of a function body with implicit return.
+// The last statement's value is returned implicitly (like the Go evaluator).
 func (cg *CodeGen) compileFuncBody(stmts []*parser.Statement) {
 	for i, stmt := range stmts {
 		isLast := i == len(stmts)-1
-		if isLast && stmt.ExprStmt != nil && cg.block.Term == nil {
-			val := cg.compileExpr(stmt.ExprStmt.Expr)
-			cg.block.NewRet(val)
-			continue
+
+		if isLast && cg.block.Term == nil {
+			// Implicit return for the last statement
+			switch {
+			case stmt.ExprStmt != nil:
+				val := cg.compileExpr(stmt.ExprStmt.Expr)
+				cg.block.NewRet(val)
+				continue
+			case stmt.Assignment != nil:
+				val := cg.compileExpr(stmt.Assignment.Value)
+				cg.setVar(stmt.Assignment.Name, val)
+				cg.block.NewRet(val)
+				continue
+			case stmt.TypedAssign != nil:
+				val := cg.compileExpr(stmt.TypedAssign.Value)
+				cg.setVar(stmt.TypedAssign.Name, val)
+				cg.block.NewRet(val)
+				continue
+			case stmt.CompoundAssign != nil:
+				cg.compileCompoundAssign(stmt.CompoundAssign)
+				result := cg.getVar(stmt.CompoundAssign.Name)
+				cg.block.NewRet(result)
+				continue
+			}
 		}
+
 		cg.compileStatement(stmt)
 	}
 	if cg.block.Term == nil {
