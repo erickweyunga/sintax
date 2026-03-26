@@ -265,12 +265,18 @@ var nativeTwoArg = map[string]string{
 	"__native_list_concat": "__native_list_concat", "__native_dict_delete": "__native_dict_delete",
 	"__native_dict_merge": "__native_dict_merge", "__native_write_file": "__native_write_file",
 	"__native_format_time": "__native_format_time", "__native_rename": "__native_rename",
+	"__native_regex_match": "__native_regex_match", "__native_regex_find": "__native_regex_find",
 }
 
 var nativeThreeArg = map[string]string{
-	"__native_replace":    "__native_replace",
-	"__native_slice":       "__native_slice",
-	"__native_list_insert": "__native_list_insert",
+	"__native_replace":      "__native_replace",
+	"__native_slice":        "__native_slice",
+	"__native_list_insert":  "__native_list_insert",
+	"__native_regex_replace": "__native_regex_replace",
+}
+
+var nativeFourArg = map[string]string{
+	"__native_http_request": "__native_http_request",
 }
 
 // Builtin mappings
@@ -335,6 +341,9 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 	}
 	if rtName, ok := nativeThreeArg[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]))
+	}
+	if rtName, ok := nativeFourArg[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]), cg.compileExpr(fc.Args[3]))
 	}
 
 	// User-defined function

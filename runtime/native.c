@@ -14,6 +14,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+#include <regex.h>
+
+#ifdef SX_USE_CURL
+#include <curl/curl.h>
+#endif
 
 /* --- Type check helpers --- */
 
@@ -764,3 +769,205 @@ SxValue* __native_rename(SxValue *old, SxValue *new_) {
         return sx_error_new(sx_string("Cannot rename file"));
     return sx_null();
 }
+
+/* --- Regex natives (POSIX regex.h) --- */
+
+SxValue* __native_regex_match(SxValue *pattern, SxValue *str) {
+    expect_str(pattern, "regex_match");
+    expect_str(str, "regex_match");
+
+    regex_t reg;
+    int rc = regcomp(&reg, pattern->string, REG_EXTENDED | REG_NOSUB);
+    if (rc != 0) {
+        char errbuf[128];
+        regerror(rc, &reg, errbuf, sizeof(errbuf));
+        regfree(&reg);
+        return sx_error_new(sx_string(errbuf));
+    }
+
+    int match = regexec(&reg, str->string, 0, NULL, 0);
+    regfree(&reg);
+    return sx_bool(match == 0);
+}
+
+SxValue* __native_regex_find(SxValue *pattern, SxValue *str) {
+    expect_str(pattern, "regex_find");
+    expect_str(str, "regex_find");
+
+    regex_t reg;
+    int rc = regcomp(&reg, pattern->string, REG_EXTENDED);
+    if (rc != 0) {
+        char errbuf[128];
+        regerror(rc, &reg, errbuf, sizeof(errbuf));
+        regfree(&reg);
+        return sx_error_new(sx_string(errbuf));
+    }
+
+    SxValue *list = sx_list_new();
+    const char *cursor = str->string;
+    regmatch_t match;
+
+    while (regexec(&reg, cursor, 1, &match, 0) == 0) {
+        if (match.rm_so == match.rm_eo) {
+            if (*cursor == '\0') break;
+            cursor++;
+            continue;
+        }
+        int len = match.rm_eo - match.rm_so;
+        char *sub = (char *)SX_MALLOC(len + 1);
+        memcpy(sub, cursor + match.rm_so, len);
+        sub[len] = '\0';
+        SxValue *sv = sx_alloc(SX_STRING);
+        sv->string = sub;
+        sx_list_append(list, sv);
+        cursor += match.rm_eo;
+    }
+
+    regfree(&reg);
+    return list;
+}
+
+SxValue* __native_regex_replace(SxValue *pattern, SxValue *str, SxValue *replacement) {
+    expect_str(pattern, "regex_replace");
+    expect_str(str, "regex_replace");
+    expect_str(replacement, "regex_replace");
+
+    regex_t reg;
+    int rc = regcomp(&reg, pattern->string, REG_EXTENDED);
+    if (rc != 0) {
+        char errbuf[128];
+        regerror(rc, &reg, errbuf, sizeof(errbuf));
+        regfree(&reg);
+        return sx_error_new(sx_string(errbuf));
+    }
+
+    const char *cursor = str->string;
+    regmatch_t match;
+    char *result = NULL;
+    int rlen = 0, rcap = 0;
+
+    while (regexec(&reg, cursor, 1, &match, 0) == 0) {
+        if (match.rm_so > 0)
+            buf_append(&result, &rlen, &rcap, cursor, match.rm_so);
+        buf_append_str(&result, &rlen, &rcap, replacement->string);
+        if (match.rm_so == match.rm_eo) {
+            if (*cursor == '\0') break;
+            buf_append(&result, &rlen, &rcap, cursor, 1);
+            cursor++;
+            continue;
+        }
+        cursor += match.rm_eo;
+    }
+    buf_append_str(&result, &rlen, &rcap, cursor);
+    buf_append_char(&result, &rlen, &rcap, '\0');
+
+    regfree(&reg);
+
+    SxValue *r = sx_alloc(SX_STRING);
+    r->string = result ? result : sx_strdup("");
+    return r;
+}
+
+/* --- HTTP native (libcurl) --- */
+
+#ifdef SX_USE_CURL
+
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} CurlBuffer;
+
+static size_t curl_write_cb(void *ptr, size_t size, size_t nmemb, void *userdata) {
+    CurlBuffer *buf = (CurlBuffer *)userdata;
+    size_t total = size * nmemb;
+    while (buf->len + total >= buf->cap) {
+        buf->cap = buf->cap ? buf->cap * 2 : 4096;
+        buf->data = (char *)SX_REALLOC(buf->data, buf->cap);
+    }
+    memcpy(buf->data + buf->len, ptr, total);
+    buf->len += total;
+    return total;
+}
+
+static int _curl_initialized = 0;
+
+SxValue* __native_http_request(SxValue *method, SxValue *url,
+                                SxValue *headers, SxValue *body) {
+    expect_str(method, "http_request");
+    expect_str(url, "http_request");
+
+    if (!_curl_initialized) {
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        _curl_initialized = 1;
+    }
+
+    CURL *curl = curl_easy_init();
+    if (!curl) return sx_error_new(sx_string("Failed to init HTTP client"));
+
+    CurlBuffer buf = {NULL, 0, 0};
+
+    curl_easy_setopt(curl, CURLOPT_URL, url->string);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+
+    if (strcmp(method->string, "POST") == 0) {
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        if (body && body->type == SX_STRING) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body->string);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(body->string));
+        }
+    } else if (strcmp(method->string, "PUT") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+        if (body && body->type == SX_STRING)
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body->string);
+    } else if (strcmp(method->string, "DELETE") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    }
+
+    struct curl_slist *hlist = NULL;
+    if (headers && headers->type == SX_DICT) {
+        for (int i = 0; i < headers->dict.len; i++) {
+            SxDictBucket *b = sx_dict_find(&headers->dict, headers->dict.keys[i]);
+            if (b && b->value && b->value->type == SX_STRING) {
+                char hdr[512];
+                snprintf(hdr, sizeof(hdr), "%s: %s", headers->dict.keys[i], b->value->string);
+                hlist = curl_slist_append(hlist, hdr);
+            }
+        }
+        if (hlist) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hlist);
+    }
+
+    CURLcode res = curl_easy_perform(curl);
+    if (hlist) curl_slist_free_all(hlist);
+
+    if (res != CURLE_OK) {
+        SxValue *err = sx_error_new(sx_string(curl_easy_strerror(res)));
+        curl_easy_cleanup(curl);
+        if (buf.data) SX_FREE(buf.data);
+        return err;
+    }
+
+    curl_easy_cleanup(curl);
+
+    if (!buf.data) return sx_string("");
+    buf.data = (char *)SX_REALLOC(buf.data, buf.len + 1);
+    buf.data[buf.len] = '\0';
+
+    SxValue *r = sx_alloc(SX_STRING);
+    r->string = buf.data;
+    return r;
+}
+
+#else
+
+/* Stub when libcurl is not available */
+SxValue* __native_http_request(SxValue *method, SxValue *url,
+                                SxValue *headers, SxValue *body) {
+    (void)method; (void)url; (void)headers; (void)body;
+    return sx_error_new(sx_string("HTTP not available (compile with -DSX_USE_CURL -lcurl)"));
+}
+
+#endif

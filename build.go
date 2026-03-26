@@ -100,6 +100,22 @@ func clangCompile(irFile, outputFile string) error {
 	}
 foundGC:
 
+	// Check for libcurl (HTTP support)
+	for _, curlLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
+		curlInclude := strings.Replace(curlLib, "/lib", "/include", 1)
+		for _, ext := range []string{"libcurl.dylib", "libcurl.a", "libcurl.so", "libcurl.tbd"} {
+			if _, err := os.Stat(filepath.Join(curlLib, ext)); err == nil {
+				args = append(args, "-DSX_USE_CURL", "-I"+curlInclude, "-L"+curlLib, "-lcurl")
+				goto foundCurl
+			}
+		}
+	}
+	// macOS: check if curl.h exists (system SDK includes it)
+	if _, err := exec.Command("xcrun", "--show-sdk-path").Output(); err == nil {
+		args = append(args, "-DSX_USE_CURL", "-lcurl")
+	}
+foundCurl:
+
 	cmd := exec.Command("clang", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

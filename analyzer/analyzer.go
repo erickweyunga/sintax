@@ -496,6 +496,11 @@ func (a *Analyzer) registerBuiltins() {
 		// JSON
 		"__native_json_parse": 1, "__native_json_stringify": 1,
 		"__native_json_pretty": 1,
+		// Regex
+		"__native_regex_match": 2, "__native_regex_find": 2,
+		"__native_regex_replace": 3,
+		// HTTP
+		"__native_http_request": 4,
 	}
 	for name, arity := range natives {
 		a.functions[name] = &FuncInfo{

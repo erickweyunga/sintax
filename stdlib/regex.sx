@@ -1,0 +1,10 @@
+-- Regex standard library (POSIX Extended Regular Expressions)
+
+pub fn (str pattern, str text) bool match:
+    return __native_regex_match(pattern, text)
+
+pub fn (str pattern, str text) list find:
+    return __native_regex_find(pattern, text)
+
+pub fn (str pattern, str text, str replacement) str replace:
+    return __native_regex_replace(pattern, text, replacement)

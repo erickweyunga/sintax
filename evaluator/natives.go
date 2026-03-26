@@ -3,10 +3,13 @@ package evaluator
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -73,6 +76,12 @@ func init() {
 		"__native_json_parse":     nativeJsonParse,
 		"__native_json_stringify": nativeJsonStringify,
 		"__native_json_pretty":    nativeJsonPretty,
+		// Regex
+		"__native_regex_match":   nativeRegexMatch,
+		"__native_regex_find":    nativeRegexFind,
+		"__native_regex_replace": nativeRegexReplace,
+		// HTTP
+		"__native_http_request": nativeHttpRequest,
 	}
 
 	for name, fn := range natives {
@@ -681,4 +690,82 @@ func jsonWriteValue(buf *strings.Builder, obj object.Object, prefix, indent stri
 	default:
 		buf.WriteString("null")
 	}
+}
+
+// --- Regex ---
+
+func nativeRegexMatch(args []*parser.Expr, env *Environment) object.Object {
+	pattern := expectStr(evalExpr(args[0], env), "regex_match")
+	str := expectStr(evalExpr(args[1], env), "regex_match")
+	re, err := regexp.Compile(pattern.Value)
+	if err != nil {
+		return &object.ErrorObj{Message: "Invalid regex: " + err.Error()}
+	}
+	return &object.BoolObj{Value: re.MatchString(str.Value)}
+}
+
+func nativeRegexFind(args []*parser.Expr, env *Environment) object.Object {
+	pattern := expectStr(evalExpr(args[0], env), "regex_find")
+	str := expectStr(evalExpr(args[1], env), "regex_find")
+	re, err := regexp.Compile(pattern.Value)
+	if err != nil {
+		return &object.ErrorObj{Message: "Invalid regex: " + err.Error()}
+	}
+	matches := re.FindAllString(str.Value, -1)
+	elements := make([]object.Object, len(matches))
+	for i, m := range matches {
+		elements[i] = &object.StringObj{Value: m}
+	}
+	return &object.ListObj{Elements: elements}
+}
+
+func nativeRegexReplace(args []*parser.Expr, env *Environment) object.Object {
+	pattern := expectStr(evalExpr(args[0], env), "regex_replace")
+	str := expectStr(evalExpr(args[1], env), "regex_replace")
+	replacement := expectStr(evalExpr(args[2], env), "regex_replace")
+	re, err := regexp.Compile(pattern.Value)
+	if err != nil {
+		return &object.ErrorObj{Message: "Invalid regex: " + err.Error()}
+	}
+	return &object.StringObj{Value: re.ReplaceAllString(str.Value, replacement.Value)}
+}
+
+// --- HTTP ---
+
+func nativeHttpRequest(args []*parser.Expr, env *Environment) object.Object {
+	method := expectStr(evalExpr(args[0], env), "http_request")
+	url := expectStr(evalExpr(args[1], env), "http_request")
+	headersVal := evalExpr(args[2], env)
+	bodyVal := evalExpr(args[3], env)
+
+	var bodyReader io.Reader
+	if bodyStr, ok := bodyVal.(*object.StringObj); ok && bodyStr.Value != "" {
+		bodyReader = strings.NewReader(bodyStr.Value)
+	}
+
+	req, err := http.NewRequest(method.Value, url.Value, bodyReader)
+	if err != nil {
+		return &object.ErrorObj{Message: "HTTP error: " + err.Error()}
+	}
+
+	if headers, ok := headersVal.(*object.DictObj); ok {
+		for _, k := range headers.Keys {
+			if v, ok := headers.Pairs[k].(*object.StringObj); ok {
+				req.Header.Set(k, v.Value)
+			}
+		}
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return &object.ErrorObj{Message: "HTTP error: " + err.Error()}
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &object.ErrorObj{Message: "HTTP read error: " + err.Error()}
+	}
+	return &object.StringObj{Value: string(data)}
 }

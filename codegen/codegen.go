@@ -213,6 +213,12 @@ var runtimeDecls = []rtDecl{
 	{"__native_json_parse", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_json_stringify", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_json_pretty", sxValuePtr, []types.Type{sxValuePtr}},
+	// Regex
+	{"__native_regex_match", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_regex_find", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"__native_regex_replace", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
+	// HTTP
+	{"__native_http_request", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr, sxValuePtr}},
 	{"sx_function", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_closure", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, i32}},
 	{"sx_alloc_env", sxValuePtr, []types.Type{i64}},
