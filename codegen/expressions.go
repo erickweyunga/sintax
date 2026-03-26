@@ -461,18 +461,20 @@ func (cg *CodeGen) compileLambda(l *parser.Lambda) llvmValue.Value {
 	prevVars := cg.vars
 	prevScopes := cg.scopes
 
-	// Lambda uses SxFnPtr signature: SxValue* fn(SxValue** args, int argc)
+	// Lambda uses SxFnPtr signature: SxValue* fn(SxValue** args, int argc, SxValue** env)
 	argsPtrType := types.NewPointer(sxValuePtr)
+	envPtrType := types.NewPointer(sxValuePtr)
 	fn := cg.mod.NewFunc(fnName, sxValuePtr,
 		ir.NewParam("args", argsPtrType),
 		ir.NewParam("argc", i32),
+		ir.NewParam("env", envPtrType),
 	)
 
 	entry := fn.NewBlock("entry")
 	cg.fn = fn
 	cg.block = entry
-	cg.vars = make(map[string]*ir.InstAlloca)
-	cg.scopes = []map[string]*ir.InstAlloca{}
+	cg.vars = make(map[string]llvmValue.Value)
+	cg.scopes = []map[string]llvmValue.Value{}
 	cg.pushScope()
 
 	// Extract params from args array

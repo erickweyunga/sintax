@@ -60,11 +60,17 @@ func (cg *CodeGen) compileStatement(stmt *parser.Statement) {
 }
 
 func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
+	isNested := cg.fn != nil && cg.fn.Name() != "main"
+
+	if isNested {
+		cg.compileNestedFuncDef(fd)
+		return
+	}
+
 	prevFn := cg.fn
 	prevBlock := cg.block
-	prevVars := cg.vars // save outer function's vars
+	prevVars := cg.vars
 
-	// Use forward-declared function, or declare now (for nested functions)
 	fn, exists := cg.userFuncs[fd.Name]
 	if !exists {
 		cg.forwardDeclare(fd)
@@ -74,9 +80,9 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	entry := fn.NewBlock("entry")
 	cg.fn = fn
 	cg.block = entry
-	cg.vars = make(map[string]*ir.InstAlloca)
+	cg.vars = make(map[string]llvmValue.Value)
 	prevScopes := cg.scopes
-	cg.scopes = []map[string]*ir.InstAlloca{} // completely fresh scope stack
+	cg.scopes = []map[string]llvmValue.Value{}
 	cg.pushScope()
 
 	for i, p := range fd.Params {
@@ -85,22 +91,107 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 		cg.scopes[len(cg.scopes)-1][p.Name] = alloca
 	}
 
-	for i, stmt := range fd.Body.Statements {
-		isLast := i == len(fd.Body.Statements)-1
+	cg.compileFuncBody(fd.Body.Statements)
 
-		// Last ExprStmt in a function: return its value (implicit return)
-		if isLast && stmt.ExprStmt != nil && cg.block.Term == nil {
-			val := cg.compileExpr(stmt.ExprStmt.Expr)
-			cg.block.NewRet(val)
-			continue
+	cg.popScope()
+	cg.fn = prevFn
+	cg.block = prevBlock
+	cg.vars = prevVars
+	cg.scopes = prevScopes
+}
+
+// compileNestedFuncDef compiles a function defined inside another function
+// as a closure. Captured variables are stored in a heap-allocated environment.
+func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
+	captures := cg.findCaptures(fd)
+	envSize := len(captures)
+
+	// 1. For each captured variable, allocate a heap cell (SxValue**)
+	//    so both parent and closure read/write through the same pointer.
+	var envSlots []llvmValue.Value
+	for _, name := range captures {
+		varPtr, _ := cg.resolveVar(name)
+
+		// Check if this variable is already a heap cell (from a previous
+		// closure in the same scope). If so, reuse it.
+		// A heap cell is a bitcast result; a stack alloca is an InstAlloca.
+		if _, isAlloca := varPtr.(*ir.InstAlloca); isAlloca {
+			// First time capturing — promote from stack to heap cell
+			cell := cg.block.NewCall(cg.rtFuncs["sx_alloc_env"], constant.NewInt(i64, 8))
+			cellTyped := cg.block.NewBitCast(cell, types.NewPointer(sxValuePtr))
+
+			currentVal := cg.getVar(name)
+			cg.block.NewStore(currentVal, cellTyped)
+
+			cg.setVarPtr(name, cellTyped)
+			envSlots = append(envSlots, cg.block.NewBitCast(cellTyped, sxValuePtr))
+		} else {
+			// Already a heap cell — reuse it
+			envSlots = append(envSlots, cg.block.NewBitCast(varPtr, sxValuePtr))
 		}
-
-		cg.compileStatement(stmt)
 	}
 
-	if cg.block.Term == nil {
-		cg.block.NewRet(cg.callRT("sx_null"))
+	// 2. Build env array on the stack: SxValue* env[n] = {cell0, cell1, ...}
+	//    Then heap-copy it so it outlives this stack frame.
+	var envArray llvmValue.Value
+	if envSize > 0 {
+		// Allocate heap env array
+		heapEnv := cg.block.NewCall(cg.rtFuncs["sx_alloc_env"],
+			constant.NewInt(i64, int64(envSize*8)))
+		heapEnvTyped := cg.block.NewBitCast(heapEnv, types.NewPointer(sxValuePtr))
+		for i, slot := range envSlots {
+			ptr := cg.block.NewGetElementPtr(sxValuePtr, heapEnvTyped, constant.NewInt(i32, int64(i)))
+			cg.block.NewStore(slot, ptr)
+		}
+		envArray = cg.block.NewBitCast(heapEnvTyped, sxValuePtr)
+	} else {
+		envArray = constant.NewNull(sxValuePtr)
 	}
+
+	// 3. Compile the closure function body
+	cg.lambdaCounter++
+	closureName := fmt.Sprintf("sx_closure_%s_%d", fd.Name, cg.lambdaCounter)
+
+	prevFn := cg.fn
+	prevBlock := cg.block
+	prevVars := cg.vars
+	prevScopes := cg.scopes
+
+	argsPtrType := types.NewPointer(sxValuePtr)
+	envPtrType := types.NewPointer(sxValuePtr)
+	closureFn := cg.mod.NewFunc(closureName, sxValuePtr,
+		ir.NewParam("args", argsPtrType),
+		ir.NewParam("argc", i32),
+		ir.NewParam("env", envPtrType),
+	)
+
+	entry := closureFn.NewBlock("entry")
+	cg.fn = closureFn
+	cg.block = entry
+	cg.vars = make(map[string]llvmValue.Value)
+	cg.scopes = []map[string]llvmValue.Value{}
+	cg.pushScope()
+
+	// Load params from args array
+	for i, p := range fd.Params {
+		argPtr := entry.NewGetElementPtr(sxValuePtr, closureFn.Params[0], constant.NewInt(i32, int64(i)))
+		argVal := entry.NewLoad(sxValuePtr, argPtr)
+		alloca := entry.NewAlloca(sxValuePtr)
+		entry.NewStore(argVal, alloca)
+		cg.scopes[len(cg.scopes)-1][p.Name] = alloca
+	}
+
+	// Load captured variables from env — each slot is a pointer to
+	// a heap cell (SxValue**). We use the cell directly as the variable's
+	// storage, so reads/writes are shared with the enclosing scope.
+	for i, name := range captures {
+		envSlotPtr := entry.NewGetElementPtr(sxValuePtr, closureFn.Params[2], constant.NewInt(i32, int64(i)))
+		cellRaw := entry.NewLoad(sxValuePtr, envSlotPtr)
+		cellTyped := entry.NewBitCast(cellRaw, types.NewPointer(sxValuePtr))
+		cg.scopes[len(cg.scopes)-1][name] = cellTyped
+	}
+
+	cg.compileFuncBody(fd.Body.Statements)
 
 	cg.popScope()
 	cg.fn = prevFn
@@ -108,32 +199,211 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	cg.vars = prevVars
 	cg.scopes = prevScopes
 
-	// If this function was defined inside another function (nested),
-	// store a reference to it as a variable in the enclosing scope
-	// so it can be returned or passed around.
-	if prevFn != nil && prevFn.Name() != "main" || (prevFn != nil && prevBlock != nil) {
-		// Create a wrapper lambda that delegates to the compiled function
-		cg.lambdaCounter++
-		wrapperName := fmt.Sprintf("sx_wrap_%s_%d", fd.Name, cg.lambdaCounter)
-		argsPtrType := types.NewPointer(sxValuePtr)
-		wrapper := cg.mod.NewFunc(wrapperName, sxValuePtr,
-			ir.NewParam("args", argsPtrType),
-			ir.NewParam("argc", i32),
-		)
-		wEntry := wrapper.NewBlock("entry")
-		// Extract args and call the real function
-		callArgs := make([]llvmValue.Value, len(fd.Params))
-		for i := range fd.Params {
-			argPtr := wEntry.NewGetElementPtr(sxValuePtr, wrapper.Params[0], constant.NewInt(i32, int64(i)))
-			callArgs[i] = wEntry.NewLoad(sxValuePtr, argPtr)
-		}
-		result := wEntry.NewCall(fn, callArgs...)
-		wEntry.NewRet(result)
+	// 4. Create the closure value
+	fnPtr := cg.block.NewBitCast(closureFn, sxValuePtr)
+	closureVal := cg.callRT("sx_closure", fnPtr, envArray, constant.NewInt(i32, int64(envSize)))
+	cg.setVar(fd.Name, closureVal)
+}
 
-		// Store as a variable in the current scope
-		fnPtr := cg.block.NewBitCast(wrapper, sxValuePtr)
-		fnVal := cg.callRT("sx_function", fnPtr)
-		cg.setVar(fd.Name, fnVal)
+// compileFuncBody compiles the statements of a function body with implicit return.
+func (cg *CodeGen) compileFuncBody(stmts []*parser.Statement) {
+	for i, stmt := range stmts {
+		isLast := i == len(stmts)-1
+		if isLast && stmt.ExprStmt != nil && cg.block.Term == nil {
+			val := cg.compileExpr(stmt.ExprStmt.Expr)
+			cg.block.NewRet(val)
+			continue
+		}
+		cg.compileStatement(stmt)
+	}
+	if cg.block.Term == nil {
+		cg.block.NewRet(cg.callRT("sx_null"))
+	}
+}
+
+// findCaptures returns the names of variables from the enclosing scope
+// that are referenced inside a function body.
+func (cg *CodeGen) findCaptures(fd *parser.FuncDef) []string {
+	// Collect all variable names used in the function body
+	used := map[string]bool{}
+	cg.collectIdents(fd.Body.Statements, used)
+
+	// Subtract parameters (they're local, not captured)
+	for _, p := range fd.Params {
+		delete(used, p.Name)
+	}
+
+	// Subtract builtins and constants
+	for _, name := range []string{"true", "false", "null"} {
+		delete(used, name)
+	}
+
+	// Only keep names that exist in the current scope
+	var captures []string
+	for name := range used {
+		if _, ok := cg.resolveVar(name); ok {
+			captures = append(captures, name)
+		}
+	}
+	return captures
+}
+
+// collectIdents walks statements and collects all identifier references.
+func (cg *CodeGen) collectIdents(stmts []*parser.Statement, names map[string]bool) {
+	for _, stmt := range stmts {
+		switch {
+		case stmt.Assignment != nil:
+			names[stmt.Assignment.Name] = true
+			cg.collectExprIdents(stmt.Assignment.Value, names)
+		case stmt.CompoundAssign != nil:
+			names[stmt.CompoundAssign.Name] = true
+			cg.collectExprIdents(stmt.CompoundAssign.Value, names)
+		case stmt.ReturnStmt != nil:
+			cg.collectExprIdents(stmt.ReturnStmt.Value, names)
+		case stmt.PrintStmt != nil:
+			cg.collectExprIdents(stmt.PrintStmt.Value, names)
+		case stmt.ExprStmt != nil:
+			cg.collectExprIdents(stmt.ExprStmt.Expr, names)
+		case stmt.IfStmt != nil:
+			cg.collectExprIdents(stmt.IfStmt.Condition, names)
+			cg.collectIdents(stmt.IfStmt.Body.Statements, names)
+			if stmt.IfStmt.Else != nil {
+				cg.collectIdents(stmt.IfStmt.Else.Statements, names)
+			}
+		case stmt.WhileStmt != nil:
+			cg.collectExprIdents(stmt.WhileStmt.Condition, names)
+			cg.collectIdents(stmt.WhileStmt.Body.Statements, names)
+		case stmt.ForStmt != nil:
+			cg.collectExprIdents(stmt.ForStmt.Iter, names)
+			cg.collectIdents(stmt.ForStmt.Body.Statements, names)
+		case stmt.SwitchStmt != nil:
+			cg.collectExprIdents(stmt.SwitchStmt.Value, names)
+			for _, c := range stmt.SwitchStmt.Cases {
+				cg.collectIdents(c.Body.Statements, names)
+			}
+			if stmt.SwitchStmt.Default != nil {
+				cg.collectIdents(stmt.SwitchStmt.Default.Statements, names)
+			}
+		case stmt.CatchStmt != nil:
+			cg.collectExprIdents(stmt.CatchStmt.Value, names)
+			cg.collectIdents(stmt.CatchStmt.Body.Statements, names)
+		case stmt.TypedAssign != nil:
+			cg.collectExprIdents(stmt.TypedAssign.Value, names)
+		case stmt.IndexAssign != nil:
+			names[stmt.IndexAssign.Name] = true
+		}
+	}
+}
+
+func (cg *CodeGen) collectExprIdents(expr *parser.Expr, names map[string]bool) {
+	if expr == nil {
+		return
+	}
+	cg.collectAndIdents(expr.Left, names)
+	for _, op := range expr.Ops {
+		cg.collectAndIdents(op.Right, names)
+	}
+}
+
+func (cg *CodeGen) collectAndIdents(and *parser.LogicalAnd, names map[string]bool) {
+	if and == nil {
+		return
+	}
+	cg.collectCmpIdents(and.Left, names)
+	for _, op := range and.Ops {
+		cg.collectCmpIdents(op.Right, names)
+	}
+}
+
+func (cg *CodeGen) collectCmpIdents(cmp *parser.Comparison, names map[string]bool) {
+	if cmp == nil {
+		return
+	}
+	cg.collectAddIdents(cmp.Left, names)
+	if cmp.Right != nil {
+		cg.collectAddIdents(cmp.Right, names)
+	}
+}
+
+func (cg *CodeGen) collectAddIdents(add *parser.Addition, names map[string]bool) {
+	if add == nil {
+		return
+	}
+	cg.collectMulIdents(add.Left, names)
+	for _, op := range add.Ops {
+		cg.collectMulIdents(op.Right, names)
+	}
+}
+
+func (cg *CodeGen) collectMulIdents(mul *parser.Multiplication, names map[string]bool) {
+	if mul == nil {
+		return
+	}
+	cg.collectUnaryIdents(mul.Left, names)
+	for _, op := range mul.Ops {
+		cg.collectUnaryIdents(op.Right, names)
+	}
+}
+
+func (cg *CodeGen) collectUnaryIdents(u *parser.Unary, names map[string]bool) {
+	if u == nil {
+		return
+	}
+	if u.Not != nil {
+		cg.collectUnaryIdents(u.Not, names)
+		return
+	}
+	if u.Neg != nil {
+		cg.collectUnaryIdents(u.Neg, names)
+		return
+	}
+	if u.Pos != nil {
+		cg.collectUnaryIdents(u.Pos, names)
+		return
+	}
+	if u.Primary != nil {
+		cg.collectPrimaryIdents(u.Primary, names)
+	}
+}
+
+func (cg *CodeGen) collectPrimaryIdents(p *parser.Primary, names map[string]bool) {
+	if p == nil {
+		return
+	}
+	if p.Ident != nil {
+		names[*p.Ident] = true
+	}
+	if p.FuncCall != nil {
+		for _, arg := range p.FuncCall.Args {
+			cg.collectExprIdents(arg, names)
+		}
+	}
+	if p.SubExpr != nil {
+		cg.collectExprIdents(p.SubExpr, names)
+	}
+	if p.ListLit != nil {
+		for _, el := range p.ListLit.Elements {
+			cg.collectExprIdents(el, names)
+		}
+	}
+	if p.DictLit != nil {
+		for _, e := range p.DictLit.Entries {
+			cg.collectExprIdents(e.Key, names)
+			cg.collectExprIdents(e.Value, names)
+		}
+	}
+	if p.Lambda != nil {
+		cg.collectExprIdents(p.Lambda.Body, names)
+	}
+	for _, s := range p.Suffix {
+		if s.Index != nil {
+			cg.collectExprIdents(s.Index.Index, names)
+		}
+		if s.Method != nil {
+			for _, arg := range s.Method.Args {
+				cg.collectExprIdents(arg, names)
+			}
+		}
 	}
 }
 

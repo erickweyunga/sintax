@@ -140,10 +140,22 @@ static void sx_dict_add_key(SxDict *d, const char *key) {
 
 // --- Function / Error constructors ---
 
-SxValue* sx_function(SxFnPtr fn) {
+// Allocate a heap cell for a captured variable.
+// Returns a pointer suitable for storing an SxValue*.
+void* sx_alloc_env(int64_t size) {
+    return SX_MALLOC(size);
+}
+
+SxValue* sx_closure(SxFnPtr fn, SxValue** env, int env_size) {
     SxValue *v = sx_alloc(SX_FUNCTION);
-    v->function = fn;
+    v->closure.fn = fn;
+    v->closure.env = env;
+    v->closure.env_size = env_size;
     return v;
+}
+
+SxValue* sx_function(SxFnPtr fn) {
+    return sx_closure(fn, NULL, 0);
 }
 
 SxValue* sx_error_new(SxValue *msgVal) {
@@ -167,7 +179,7 @@ SxValue* sx_call(SxValue *fn, SxValue **args, int argc) {
     if (!fn || fn->type != SX_FUNCTION) {
         sx_error("Not a function");
     }
-    return fn->function(args, argc);
+    return fn->closure.fn(args, argc, fn->closure.env);
 }
 
 void sx_error(const char *msg) {
@@ -318,7 +330,7 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             SxValue *list = sx_list_new();
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *item = obj->list.items[i];
-                sx_list_append(list, args[0]->function(&item, 1));
+                sx_list_append(list, args[0]->closure.fn(&item, 1, args[0]->closure.env));
             }
             return list;
         }
@@ -327,7 +339,7 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             SxValue *list = sx_list_new();
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *item = obj->list.items[i];
-                if (sx_truthy(args[0]->function(&item, 1)))
+                if (sx_truthy(args[0]->closure.fn(&item, 1, args[0]->closure.env)))
                     sx_list_append(list, item);
             }
             return list;
@@ -337,7 +349,7 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             SxValue *acc = args[1];
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *pair[2] = {acc, obj->list.items[i]};
-                acc = args[0]->function(pair, 2);
+                acc = args[0]->closure.fn(pair, 2, args[0]->closure.env);
             }
             return acc;
         }
@@ -345,7 +357,7 @@ SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
             if (args[0]->type != SX_FUNCTION) sx_error("list.each() argument must be a function");
             for (int i = 0; i < obj->list.len; i++) {
                 SxValue *item = obj->list.items[i];
-                args[0]->function(&item, 1);
+                args[0]->closure.fn(&item, 1, args[0]->closure.env);
             }
             return sx_null();
         }

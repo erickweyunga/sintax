@@ -41,8 +41,10 @@ typedef struct {
     int keys_cap;
 } SxDict;
 
-// Function pointer type: takes an array of SxValue* args and count, returns SxValue*
-typedef SxValue* (*SxFnPtr)(SxValue** args, int argc);
+// Closure: function pointer + captured environment.
+// env is a heap-allocated array of SxValue** (pointers to variable slots),
+// so mutations inside the closure are visible to the enclosing scope.
+typedef SxValue* (*SxFnPtr)(SxValue** args, int argc, SxValue** env);
 
 // Tagged value — the core type of Sintax
 struct SxValue {
@@ -53,7 +55,11 @@ struct SxValue {
         int boolean;
         SxList list;
         SxDict dict;
-        SxFnPtr function;  // SX_FUNCTION
+        struct {           // SX_FUNCTION
+            SxFnPtr fn;
+            SxValue** env; // captured variable slots (NULL if no captures)
+            int env_size;
+        } closure;
     };
 };
 
@@ -79,7 +85,8 @@ SxValue* sx_bool(int b);
 SxValue* sx_null(void);
 SxValue* sx_list_new(void);
 SxValue* sx_dict_new(void);
-SxValue* sx_function(SxFnPtr fn);
+SxValue* sx_closure(SxFnPtr fn, SxValue** env, int env_size);
+SxValue* sx_function(SxFnPtr fn);  // convenience: closure with no env
 SxValue* sx_error_new(SxValue *msgVal);
 
 // Function calls
@@ -143,6 +150,9 @@ SxValue* sx_concat(int count, ...);
 
 // Type checking
 void sx_check_type(SxValue *v, SxType expected, const char *name);
+
+// Closure environment
+void* sx_alloc_env(int64_t size);
 
 // Error
 void sx_error(const char *msg);

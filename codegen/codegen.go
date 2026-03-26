@@ -22,8 +22,8 @@ type CodeGen struct {
 	mod    *ir.Module
 	block  *ir.Block
 	fn     *ir.Func
-	vars   map[string]*ir.InstAlloca
-	scopes []map[string]*ir.InstAlloca
+	vars   map[string]llvmValue.Value // name → pointer to SxValue* (alloca or heap cell)
+	scopes []map[string]llvmValue.Value
 
 	rtFuncs      map[string]*ir.Func
 	strConstants map[string]*ir.Global
@@ -40,14 +40,13 @@ type CodeGen struct {
 func New() *CodeGen {
 	cg := &CodeGen{
 		mod:          ir.NewModule(),
-		vars:         make(map[string]*ir.InstAlloca),
-		scopes:       []map[string]*ir.InstAlloca{},
+		vars:         make(map[string]llvmValue.Value),
+		scopes:       []map[string]llvmValue.Value{},
 		rtFuncs:      make(map[string]*ir.Func),
 		strConstants: make(map[string]*ir.Global),
 		userFuncs:    make(map[string]*ir.Func),
 	}
 	cg.declareRuntime()
-	// No target triple — let clang use the host default
 	return cg
 }
 
@@ -214,6 +213,8 @@ var runtimeDecls = []rtDecl{
 	{"__native_json_stringify", sxValuePtr, []types.Type{sxValuePtr}},
 	{"__native_json_pretty", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_function", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_closure", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, i32}},
+	{"sx_alloc_env", sxValuePtr, []types.Type{i64}},
 	{"sx_error_new", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_call", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, i32}},
 	{"sx_is_error", sxValuePtr, []types.Type{sxValuePtr}},
@@ -233,7 +234,7 @@ func (cg *CodeGen) declareRuntime() {
 // --- Scope ---
 
 func (cg *CodeGen) pushScope() {
-	cg.scopes = append(cg.scopes, make(map[string]*ir.InstAlloca))
+	cg.scopes = append(cg.scopes, make(map[string]llvmValue.Value))
 }
 
 func (cg *CodeGen) popScope() {
@@ -241,13 +242,14 @@ func (cg *CodeGen) popScope() {
 }
 
 func (cg *CodeGen) setVar(name string, val llvmValue.Value) {
-	alloca, ok := cg.resolveVar(name)
+	ptr, ok := cg.resolveVar(name)
 	if ok {
-		cg.block.NewStore(val, alloca)
+		cg.block.NewStore(val, ptr)
 		return
 	}
-	// New variable
-	alloca = cg.createEntryAlloca(name)
+	// New variable — allocate on the stack
+	alloca := cg.block.NewAlloca(sxValuePtr)
+	alloca.SetName(name + ".ptr")
 	cg.block.NewStore(val, alloca)
 	if len(cg.scopes) > 0 {
 		cg.scopes[len(cg.scopes)-1][name] = alloca
@@ -255,30 +257,31 @@ func (cg *CodeGen) setVar(name string, val llvmValue.Value) {
 	cg.vars[name] = alloca
 }
 
-func (cg *CodeGen) createEntryAlloca(name string) *ir.InstAlloca {
-	alloca := cg.block.NewAlloca(sxValuePtr)
-	alloca.SetName(name + ".ptr")
-	return alloca
+// setVarPtr overrides a variable's storage location to point at an
+// existing pointer (alloca or heap cell). Used for closure-captured variables.
+func (cg *CodeGen) setVarPtr(name string, ptr llvmValue.Value) {
+	if len(cg.scopes) > 0 {
+		cg.scopes[len(cg.scopes)-1][name] = ptr
+	}
+	cg.vars[name] = ptr
 }
 
 func (cg *CodeGen) getVar(name string) llvmValue.Value {
-	alloca, ok := cg.resolveVar(name)
+	ptr, ok := cg.resolveVar(name)
 	if !ok {
 		return cg.callRT("sx_null")
 	}
-	return cg.block.NewLoad(sxValuePtr, alloca)
+	return cg.block.NewLoad(sxValuePtr, ptr)
 }
 
-func (cg *CodeGen) resolveVar(name string) (*ir.InstAlloca, bool) {
-	// Check scopes first (innermost to outermost)
+func (cg *CodeGen) resolveVar(name string) (llvmValue.Value, bool) {
 	for i := len(cg.scopes) - 1; i >= 0; i-- {
-		if alloca, ok := cg.scopes[i][name]; ok {
-			return alloca, true
+		if ptr, ok := cg.scopes[i][name]; ok {
+			return ptr, true
 		}
 	}
-	// Then check vars map
-	if alloca, ok := cg.vars[name]; ok {
-		return alloca, true
+	if ptr, ok := cg.vars[name]; ok {
+		return ptr, true
 	}
 	return nil, false
 }
