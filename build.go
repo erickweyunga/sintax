@@ -41,7 +41,6 @@ func buildCommand() {
 
 	program, sourceStr, result := parseFile(filename)
 
-	// Analyze before compiling
 	lines := strings.Split(sourceStr, "\n")
 	if errors := analyzeProgram(program, result, filename, lines); len(errors) > 0 {
 		printErrors(errors)
@@ -53,8 +52,7 @@ func buildCommand() {
 	fmt.Printf("\033[2mCompiling %s → %s\033[0m\n", filename, outputName)
 
 	cg := codegen.New()
-	compileImports(cg, result.Imports)
-	fmt.Printf("  \033[2mGenerating IR...\033[0m\n")
+	compileImports(cg, result.Imports, true)
 	llvmIR := cg.Generate(program)
 
 	irFile := outputName + ".ll"
@@ -64,10 +62,19 @@ func buildCommand() {
 	}
 	defer os.Remove(irFile)
 
+	if err := clangCompile(irFile, outputName); err != nil {
+		fmt.Fprintf(os.Stderr, "Compilation error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Done! Run: ./%s\n", outputName)
+}
+
+// clangCompile links an LLVM IR file with the C runtime into a native binary.
+func clangCompile(irFile, outputFile string) error {
 	runtimePath := findRuntime()
 	runtimeDir := filepath.Dir(runtimePath)
 
-	// Find all .c files in runtime directory
 	cFiles := []string{runtimePath}
 	if entries, err := os.ReadDir(runtimeDir); err == nil {
 		for _, e := range entries {
@@ -77,12 +84,11 @@ func buildCommand() {
 		}
 	}
 
-	fmt.Printf("  \033[2mLinking native binary...\033[0m\n")
-
-	args := []string{"-O2", "-Wno-override-module", "-o", outputName, irFile}
+	args := []string{"-O2", "-Wno-override-module", "-o", outputFile, irFile}
 	args = append(args, cFiles...)
 	args = append(args, "-lm")
 
+	// Check for Boehm GC
 	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
 		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
 		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
@@ -95,24 +101,20 @@ func buildCommand() {
 foundGC:
 
 	cmd := exec.Command("clang", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Compilation error: %v\n", err)
-		os.Exit(1)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
-
-	fmt.Printf("Done! Run: ./%s\n", outputName)
+	return nil
 }
 
 func findRuntime() string {
 	paths := []string{
-		SintaxRuntime(), // ~/.sintax/runtime/runtime.c
+		SintaxRuntime(),
 		"runtime/runtime.c",
 		"../runtime/runtime.c",
 	}
 
-	// Also check relative to executable
 	if exe, err := os.Executable(); err == nil {
 		if real, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = real
@@ -137,18 +139,16 @@ func findRuntime() string {
 	return ""
 }
 
-// compileImports parses imported .sx modules and compiles their functions
-// into the codegen module so they're available to the main program.
-func compileImports(cg *codegen.CodeGen, imports []preprocessor.Import) {
+// compileImports parses imported .sx modules and compiles their functions.
+func compileImports(cg *codegen.CodeGen, imports []preprocessor.Import, verbose bool) {
 	for _, imp := range imports {
 		modName := imp.Module
 
-		// Resolve stdlib path
 		var filePath string
 		if strings.HasPrefix(modName, "std/") {
 			stdName := strings.TrimPrefix(modName, "std/")
 			filePath = findStdlibFile(stdName)
-			modName = stdName // strip std/ for the function prefix
+			modName = stdName
 		} else if strings.HasSuffix(modName, ".sx") {
 			filePath = modName
 			modName = strings.TrimSuffix(filepath.Base(modName), ".sx")
@@ -172,7 +172,9 @@ func compileImports(cg *codegen.CodeGen, imports []preprocessor.Import) {
 			continue
 		}
 
-		fmt.Printf("  \033[2mCompiling module %s\033[0m\n", modName)
+		if verbose {
+			fmt.Printf("  \033[2mCompiling module %s\033[0m\n", modName)
+		}
 		cg.CompileModule(program, modName, imp.Function)
 	}
 }

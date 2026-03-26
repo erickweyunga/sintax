@@ -151,7 +151,7 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 
 	// Compile to binary
 	cg := codegen.New()
-	compileImports(cg, testResult.Imports)
+	compileImports(cg, testResult.Imports, false)
 	llvmIR := cg.Generate(program)
 
 	tmpDir, _ := os.MkdirTemp("", "sx-test-*")
@@ -161,7 +161,7 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	binFile := filepath.Join(tmpDir, "test")
 	os.WriteFile(irFile, []byte(llvmIR), 0644)
 
-	if err := compileToNative(irFile, binFile); err != nil {
+	if err := clangCompile(irFile, binFile); err != nil {
 		r.Failed = len(tests)
 		r.Failures = append(r.Failures, fmt.Sprintf("Compile error: %s", err.Error()))
 		r.Duration = time.Since(start)
@@ -222,39 +222,3 @@ func buildTestProgram(source string, tests []TestCase, imports []preprocessor.Im
 	return b.String()
 }
 
-// compileToNative compiles an LLVM IR file to a native binary.
-func compileToNative(irFile, binFile string) error {
-	runtimePath := findRuntime()
-	runtimeDir := filepath.Dir(runtimePath)
-
-	cFiles := []string{runtimePath}
-	if entries, _ := os.ReadDir(runtimeDir); entries != nil {
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".c") && e.Name() != "runtime.c" {
-				cFiles = append(cFiles, filepath.Join(runtimeDir, e.Name()))
-			}
-		}
-	}
-
-	args := []string{"-O2", "-Wno-override-module", "-o", binFile, irFile}
-	args = append(args, cFiles...)
-	args = append(args, "-lm")
-
-	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
-		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
-		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
-			if _, err := os.Stat(filepath.Join(gcLib, ext)); err == nil {
-				args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
-				goto foundGC
-			}
-		}
-	}
-foundGC:
-
-	cmd := exec.Command("clang", args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
-	}
-	return nil
-}

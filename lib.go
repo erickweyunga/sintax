@@ -51,8 +51,9 @@ func libCommand() {
 	fmt.Printf("%s\n\n", name)
 	for _, line := range strings.Split(string(source), "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "fn ") {
-			fmt.Printf("  %s\n", trimmed)
+		if strings.HasPrefix(trimmed, "pub fn ") {
+			// Show without "pub " prefix for cleaner output
+			fmt.Printf("  %s\n", strings.TrimPrefix(trimmed, "pub "))
 		}
 	}
 }

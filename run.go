@@ -46,7 +46,7 @@ func compileAndRun(filename string) {
 	}
 
 	cg := codegen.New()
-	compileImports(cg, result.Imports)
+	compileImports(cg, result.Imports, false)
 	llvmIR := cg.Generate(program)
 
 	irFile := binaryPath + ".ll"
@@ -54,42 +54,13 @@ func compileAndRun(filename string) {
 		fmt.Fprintf(os.Stderr, "Error: Cannot write IR file\n")
 		os.Exit(1)
 	}
+	defer os.Remove(irFile)
 
-	runtimePath := findRuntime()
-	runtimeDir := filepath.Dir(runtimePath)
-
-	cFiles := []string{runtimePath}
-	if entries, err := os.ReadDir(runtimeDir); err == nil {
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".c") && e.Name() != "runtime.c" {
-				cFiles = append(cFiles, filepath.Join(runtimeDir, e.Name()))
-			}
-		}
-	}
-
-	args := []string{"-O2", "-Wno-override-module", "-o", binaryPath, irFile}
-	args = append(args, cFiles...)
-	args = append(args, "-lm")
-
-	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
-		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
-		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
-			if _, err := os.Stat(filepath.Join(gcLib, ext)); err == nil {
-				args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
-				goto foundGC
-			}
-		}
-	}
-foundGC:
-
-	cmd := exec.Command("clang", args...)
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := clangCompile(irFile, binaryPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Compilation error: %v\n", err)
 		os.Exit(1)
 	}
 
-	os.Remove(irFile)
 	execBinary(binaryPath)
 }
 
