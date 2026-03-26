@@ -42,8 +42,9 @@ type FuncInfo struct {
 	Arity      int
 	ParamNames []string
 	ParamTypes []string // type per param ("" = untyped)
-	ReturnType string   // "" = untyped
-	Line       int      // definition line (0 = builtin)
+	ReturnType  string   // "" = untyped, first type for inference
+	ReturnTypes []string // all return types (for union types)
+	Line        int      // definition line (0 = builtin)
 	Used       bool     // was this function ever called?
 	IsBuiltin  bool
 	Pub        bool
@@ -425,17 +426,19 @@ func (a *Analyzer) registerFunc(fd *parser.FuncDef) {
 			paramTypes[i] = *p.Type
 		}
 	}
+	retTypes := fd.ReturnTypes()
 	retType := ""
-	if fd.ReturnType != nil {
-		retType = *fd.ReturnType
+	if len(retTypes) > 0 {
+		retType = retTypes[0]
 	}
 	a.functions[fd.Name] = &FuncInfo{
-		Name:       fd.Name,
-		Arity:      len(fd.Params),
-		ParamNames: paramNames,
-		ParamTypes: paramTypes,
-		ReturnType: retType,
-		Pub:        fd.Pub,
+		Name:        fd.Name,
+		Arity:       len(fd.Params),
+		ParamNames:  paramNames,
+		ParamTypes:  paramTypes,
+		ReturnType:  retType,
+		ReturnTypes: retTypes,
+		Pub:         fd.Pub,
 	}
 }
 

@@ -25,11 +25,13 @@ type Statement struct {
 	ExprStmt    *ExprStmt    `| @@ )`
 }
 
-// FuncDef defines a function: [pub] fn (params) [returnType] name: body
+// FuncDef defines a function: [pub] fn (params) [returnTypes] name: body
+// Return types can be a single type, void, or a union: str | num
 type FuncDef struct {
 	Pub        bool     `@"pub"?`
 	Params     []*Param `"fn" "(" ( @@ ( "," @@ )* )? ")"`
-	ReturnType *string  `@( "num" | "str" | "bool" | "list" | "dict" )?`
+	ReturnType *string  `( @( "num" | "str" | "bool" | "list" | "dict" | "void" )`
+	MoreTypes  []string `  ( "|" @( "num" | "str" | "bool" | "list" | "dict" ) )* )?`
 	Name       string   `@Ident`
 	Body       *Block   `@@`
 }
@@ -38,6 +40,21 @@ type FuncDef struct {
 type Param struct {
 	Type *string `( @( "num" | "str" | "bool" | "list" | "dict" )`
 	Name string  `  @Ident | @Ident )`
+}
+
+// ReturnTypes returns the full list of return types for a FuncDef.
+func (fd *FuncDef) ReturnTypes() []string {
+	if fd.ReturnType == nil {
+		return nil
+	}
+	types := []string{*fd.ReturnType}
+	types = append(types, fd.MoreTypes...)
+	return types
+}
+
+// IsVoid returns true if the function is declared void.
+func (fd *FuncDef) IsVoid() bool {
+	return fd.ReturnType != nil && *fd.ReturnType == "void"
 }
 
 // Block is a brace-delimited group of statements.

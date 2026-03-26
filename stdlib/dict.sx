@@ -23,7 +23,7 @@ pub fn (dict d) num count:
 pub fn (dict d) bool is_empty:
     return len(d) == 0
 
--- Access
+-- Access (returns the value type or fallback — can't be typed)
 pub fn (dict d, str key, fallback) get:
     if has(d, key):
         return d[key]

@@ -4,17 +4,17 @@
 pub fn (str path) str read:
     return __native_read_file(path)
 
-pub fn (str path, str data) write:
-    return __native_write_file(path, data)
+pub fn (str path, str data) void write:
+    __native_write_file(path, data)
 
 pub fn (str path) bool exists:
     return __native_file_exists(path)
 
-pub fn (str path) delete:
-    return __native_delete_file(path)
+pub fn (str path) void delete:
+    __native_delete_file(path)
 
-pub fn (str old, str new) rename:
-    return __native_rename(old, new)
+pub fn (str old, str new) void rename:
+    __native_rename(old, new)
 
 -- Environment
 pub fn () str cwd:
@@ -33,9 +33,9 @@ pub fn () num time:
 pub fn (num timestamp, str format) str format_time:
     return __native_format_time(timestamp, format)
 
-pub fn (num ms) sleep:
-    return __native_sleep(ms)
+pub fn (num ms) void sleep:
+    __native_sleep(ms)
 
 -- Process
-pub fn (num code) exit:
-    return __native_exit(code)
+pub fn (num code) void exit:
+    __native_exit(code)

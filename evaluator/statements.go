@@ -57,17 +57,17 @@ func evalFuncDef(fd *parser.FuncDef, env *Environment) object.Object {
 		}
 		params[i] = object.FuncParam{Name: p.Name, Type: typ}
 	}
-	retType := ""
-	if fd.ReturnType != nil {
-		retType = object.NormalizeType(*fd.ReturnType)
+	var retTypes []string
+	for _, t := range fd.ReturnTypes() {
+		retTypes = append(retTypes, object.NormalizeType(t))
 	}
 	fn := &object.FuncObj{
-		Name:       fd.Name,
-		Params:     params,
-		ReturnType: retType,
-		Body:       fd.Body,
-		Env:        env,
-		Pub:        fd.Pub,
+		Name:        fd.Name,
+		Params:      params,
+		ReturnTypes: retTypes,
+		Body:        fd.Body,
+		Env:         env,
+		Pub:         fd.Pub,
 	}
 	env.Set(fd.Name, fn)
 	return fn

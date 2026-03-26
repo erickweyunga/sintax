@@ -10,7 +10,7 @@ var SintaxLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Arrow", Pattern: `->`},
 	{Name: "Op", Pattern: `\*\*|==|!=|>=|<=|\+=|\-=|\*=|/=|[+\-*/<>%]`},
 	{Name: "Assign", Pattern: `=`},
-	{Name: "Punct", Pattern: `[{}()\[\],;:.]`},
+	{Name: "Punct", Pattern: `[{}()\[\],;:.|]`},
 	{Name: "Ident", Pattern: `[a-zA-Z_]\w*`},
 	{Name: "Whitespace", Pattern: `\s+`},
 })

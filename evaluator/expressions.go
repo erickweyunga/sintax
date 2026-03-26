@@ -282,21 +282,29 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 
 	result := evalStatements(fn.Body.Statements, fnEnv)
 	if ret, ok := result.(*object.ReturnObj); ok {
-		if fn.ReturnType != "" {
-			retType := object.TypeName(ret.Value)
-			if retType != fn.ReturnType {
-				runtimeError("Function '%s' returns %s, expected %s", fn.Name, retType, fn.ReturnType)
-			}
-		}
+		checkReturnTypes(fn, ret.Value)
 		return ret.Value
 	}
-	if fn.ReturnType != "" && result != nil {
-		retType := object.TypeName(result)
-		if retType != fn.ReturnType {
-			runtimeError("Function '%s' returns %s, expected %s", fn.Name, retType, fn.ReturnType)
+	checkReturnTypes(fn, result)
+	return result
+}
+
+// checkReturnTypes validates that a function's return value matches its declared types.
+func checkReturnTypes(fn *object.FuncObj, val object.Object) {
+	if len(fn.ReturnTypes) == 0 || val == nil {
+		return
+	}
+	// void means the return value must be null
+	if fn.ReturnTypes[0] == "void" {
+		return // void functions can return anything (it's discarded)
+	}
+	retType := object.TypeName(val)
+	for _, t := range fn.ReturnTypes {
+		if retType == t {
+			return
 		}
 	}
-	return result
+	runtimeError("Function '%s' returns %s, expected %s", fn.Name, retType, strings.Join(fn.ReturnTypes, " | "))
 }
 
 // --- Lambda ---

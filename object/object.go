@@ -108,7 +108,7 @@ type FuncParam struct {
 type FuncObj struct {
 	Name       string
 	Params     []FuncParam
-	ReturnType string // empty = untyped
+	ReturnTypes []string // empty = untyped, ["void"] = no return value
 	Body       *parser.Block
 	Env        Env
 	Pub        bool

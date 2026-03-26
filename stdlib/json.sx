@@ -1,6 +1,7 @@
 -- JSON standard library
 
-pub fn (str s) parse:
+-- parse returns dict, list, str, num, bool, or null depending on input
+pub fn (str s) dict | list | str | num | bool parse:
     return __native_json_parse(s)
 
 pub fn (value) str stringify:
