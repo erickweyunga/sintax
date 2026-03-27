@@ -36,10 +36,30 @@ type FuncDef struct {
 	Body       *Block   `@@`
 }
 
-// Param is a function parameter, optionally typed.
+// Param is a function parameter with required type and optional default value.
+// Typed with default: num x = 5
+// Typed: num x
+// Untyped: x (legacy, analyzer will warn)
 type Param struct {
-	Type *string `( @( "num" | "str" | "bool" | "list" | "dict" )`
-	Name string  `  @Ident | @Ident )`
+	Type       *string  `( @( "num" | "str" | "bool" | "list" | "dict" )`
+	TypedName  *string  `  @Ident`
+	DefaultNum *float64 `  ( "=" ( @Number`
+	DefaultStr *string  `         | @String`
+	DefaultBool *string `         | @( "true" | "false" | "null" ) ) )?`
+	Name       string   `| @Ident )`
+}
+
+// GetName returns the parameter name regardless of which branch parsed it.
+func (p *Param) GetName() string {
+	if p.TypedName != nil {
+		return *p.TypedName
+	}
+	return p.Name
+}
+
+// HasDefault returns true if the parameter has a default value.
+func (p *Param) HasDefault() bool {
+	return p.DefaultNum != nil || p.DefaultStr != nil || p.DefaultBool != nil
 }
 
 // ReturnTypes returns the full list of return types for a FuncDef.

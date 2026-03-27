@@ -39,6 +39,8 @@ type Result struct {
 // Process converts indentation-based Sintax source into brace-delimited form.
 // Returns the processed source with newlines preserved for line tracking.
 func Process(source string) Result {
+	// Collapse multi-line backtick strings into single lines
+	source = collapseBacktickStrings(source)
 	lines := strings.Split(source, "\n")
 	indentStack := []int{0}
 	var resultLines []string
@@ -184,6 +186,35 @@ func parseUse(line string) *Import {
 		}
 	}
 	return &Import{Module: path}
+}
+
+// collapseBacktickStrings replaces newlines inside backtick strings with \n
+// so the preprocessor doesn't add semicolons inside them.
+func collapseBacktickStrings(source string) string {
+	var result strings.Builder
+	i := 0
+	for i < len(source) {
+		if source[i] == '`' {
+			result.WriteByte('`')
+			i++
+			for i < len(source) && source[i] != '`' {
+				if source[i] == '\n' {
+					result.WriteString(`\n`)
+				} else {
+					result.WriteByte(source[i])
+				}
+				i++
+			}
+			if i < len(source) {
+				result.WriteByte('`')
+				i++
+			}
+		} else {
+			result.WriteByte(source[i])
+			i++
+		}
+	}
+	return result.String()
 }
 
 func stripComment(line string) string {

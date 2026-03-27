@@ -98,10 +98,13 @@ type ErrorObj struct{ Message string }
 
 func (o *ErrorObj) Inspect() string { return "error: " + o.Message }
 
-// FuncParam holds a function parameter name and optional type.
+
+// FuncParam holds a function parameter name, type, and optional default.
 type FuncParam struct {
-	Name string
-	Type string // empty = untyped
+	Name       string
+	Type       string // empty = untyped
+	HasDefault bool
+	Default    Object // nil = no default
 }
 
 // FuncObj represents a user-defined function with its closure.

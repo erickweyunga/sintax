@@ -88,7 +88,7 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	for i, p := range fd.Params {
 		alloca := entry.NewAlloca(sxValuePtr)
 		entry.NewStore(fn.Params[i], alloca)
-		cg.scopes[len(cg.scopes)-1][p.Name] = alloca
+		cg.scopes[len(cg.scopes)-1][p.GetName()] = alloca
 	}
 
 	cg.compileFuncBody(fd.Body.Statements)
@@ -178,7 +178,7 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 		argVal := entry.NewLoad(sxValuePtr, argPtr)
 		alloca := entry.NewAlloca(sxValuePtr)
 		entry.NewStore(argVal, alloca)
-		cg.scopes[len(cg.scopes)-1][p.Name] = alloca
+		cg.scopes[len(cg.scopes)-1][p.GetName()] = alloca
 	}
 
 	// Load captured variables from env — each slot is a pointer to
@@ -252,7 +252,7 @@ func (cg *CodeGen) findCaptures(fd *parser.FuncDef) []string {
 
 	// Subtract parameters (they're local, not captured)
 	for _, p := range fd.Params {
-		delete(used, p.Name)
+		delete(used, p.GetName())
 	}
 
 	// Subtract builtins and constants

@@ -93,7 +93,10 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 	case p.String != nil:
 		raw := *p.String
 		s := raw[1 : len(raw)-1]
-		if raw[0] == '\'' {
+		if raw[0] == '`' {
+			// Backtick: multi-line string, process \n back to newlines
+			s = strings.ReplaceAll(s, `\n`, "\n")
+		} else if raw[0] == '\'' {
 			s = strings.ReplaceAll(s, "\\'", "'")
 		} else {
 			s = preprocessor.ProcessEscapes(s)
@@ -259,8 +262,25 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		runtimeError("'%s' is not a function", fc.Name)
 	}
 
-	if len(fc.Args) != len(fn.Params) {
-		runtimeError("Function '%s' expects %d args, got %d", fn.Name, len(fn.Params), len(fc.Args))
+	// Evaluate args
+	evaledArgs := make([]object.Object, len(fc.Args))
+	for i, arg := range fc.Args {
+		evaledArgs[i] = evalExpr(arg, env)
+	}
+
+	// Count required params (no default)
+	requiredCount := 0
+	for _, p := range fn.Params {
+		if !p.HasDefault {
+			requiredCount++
+		}
+	}
+	if len(evaledArgs) < requiredCount || len(evaledArgs) > len(fn.Params) {
+		if requiredCount == len(fn.Params) {
+			runtimeError("Function '%s' expects %d args, got %d", fn.Name, len(fn.Params), len(evaledArgs))
+		} else {
+			runtimeError("Function '%s' expects %d to %d args, got %d", fn.Name, requiredCount, len(fn.Params), len(evaledArgs))
+		}
 	}
 
 	closureEnv, ok := fn.Env.(*Environment)
@@ -270,7 +290,14 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 
 	fnEnv := NewEnclosed(closureEnv)
 	for i, param := range fn.Params {
-		val := evalExpr(fc.Args[i], env)
+		var val object.Object
+		if i < len(evaledArgs) {
+			val = evaledArgs[i]
+		} else if param.Default != nil {
+			val = param.Default
+		} else {
+			val = object.Null
+		}
 		if param.Type != "" {
 			valType := object.TypeName(val)
 			if valType != param.Type {

@@ -649,6 +649,44 @@ SxValue* sx_sort(SxValue *list) {
     return list;
 }
 
+// --- Functional: map, filter, reduce ---
+
+SxValue* sx_map(SxValue *list, SxValue *fn) {
+    if (!list || list->type != SX_LIST) sx_error("map() first argument must be a list");
+    if (!fn || fn->type != SX_FUNCTION) sx_error("map() second argument must be a function");
+    SxValue *result = sx_list_new();
+    for (int i = 0; i < list->list.len; i++) {
+        SxValue *item = list->list.items[i];
+        SxValue *mapped = fn->closure.fn(&item, 1, fn->closure.env);
+        sx_list_append(result, mapped);
+    }
+    return result;
+}
+
+SxValue* sx_filter(SxValue *list, SxValue *fn) {
+    if (!list || list->type != SX_LIST) sx_error("filter() first argument must be a list");
+    if (!fn || fn->type != SX_FUNCTION) sx_error("filter() second argument must be a function");
+    SxValue *result = sx_list_new();
+    for (int i = 0; i < list->list.len; i++) {
+        SxValue *item = list->list.items[i];
+        SxValue *keep = fn->closure.fn(&item, 1, fn->closure.env);
+        if (sx_truthy(keep))
+            sx_list_append(result, item);
+    }
+    return result;
+}
+
+SxValue* sx_reduce(SxValue *list, SxValue *fn, SxValue *init) {
+    if (!list || list->type != SX_LIST) sx_error("reduce() first argument must be a list");
+    if (!fn || fn->type != SX_FUNCTION) sx_error("reduce() second argument must be a function");
+    SxValue *acc = init;
+    for (int i = 0; i < list->list.len; i++) {
+        SxValue *pair[2] = {acc, list->list.items[i]};
+        acc = fn->closure.fn(pair, 2, fn->closure.env);
+    }
+    return acc;
+}
+
 // --- Dict operations (hash table) ---
 
 SxValue* sx_dict_get(SxValue *dict, SxValue *key) {

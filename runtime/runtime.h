@@ -129,6 +129,11 @@ SxValue* sx_list_remove(SxValue *list, SxValue *index);
 // Sort
 SxValue* sx_sort(SxValue *list);
 
+// Functional
+SxValue* sx_map(SxValue *list, SxValue *fn);
+SxValue* sx_filter(SxValue *list, SxValue *fn);
+SxValue* sx_reduce(SxValue *list, SxValue *fn, SxValue *init);
+
 // Dict operations
 SxDictBucket* sx_dict_find(SxDict *d, const char *key);
 SxValue* sx_dict_get(SxValue *dict, SxValue *key);

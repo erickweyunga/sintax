@@ -55,7 +55,23 @@ func evalFuncDef(fd *parser.FuncDef, env *Environment) object.Object {
 		if p.Type != nil {
 			typ = object.NormalizeType(*p.Type)
 		}
-		params[i] = object.FuncParam{Name: p.Name, Type: typ}
+		fp := object.FuncParam{Name: p.GetName(), Type: typ, HasDefault: p.HasDefault()}
+		if p.DefaultNum != nil {
+			fp.Default = &object.NumberObj{Value: *p.DefaultNum}
+		} else if p.DefaultStr != nil {
+			raw := *p.DefaultStr
+			fp.Default = &object.StringObj{Value: raw[1 : len(raw)-1]}
+		} else if p.DefaultBool != nil {
+			switch *p.DefaultBool {
+			case "true":
+				fp.Default = object.True
+			case "false":
+				fp.Default = object.False
+			case "null":
+				fp.Default = object.Null
+			}
+		}
+		params[i] = fp
 	}
 	var retTypes []string
 	for _, t := range fd.ReturnTypes() {

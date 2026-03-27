@@ -167,7 +167,11 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	case p.String != nil:
 		raw := *p.String
 		s := raw[1 : len(raw)-1]
-		if raw[0] == '\'' {
+		if raw[0] == '`' {
+			// Backtick: multi-line string, process \n back to newlines
+			s = strings.ReplaceAll(s, `\n`, "\n")
+			result = cg.callRT("sx_string", cg.globalString(s))
+		} else if raw[0] == '\'' {
 			// Single-quoted: raw string, no interpolation
 			s = strings.ReplaceAll(s, "\\'", "'")
 			result = cg.callRT("sx_string", cg.globalString(s))
@@ -294,8 +298,14 @@ var oneArgBuiltins = map[string]string{
 }
 
 var twoArgBuiltins = map[string]string{
-	"pop": "sx_list_remove",
-	"has": "sx_dict_has",
+	"pop":    "sx_list_remove",
+	"has":    "sx_dict_has",
+	"map":    "sx_map",
+	"filter": "sx_filter",
+}
+
+var threeArgBuiltins = map[string]string{
+	"reduce": "sx_reduce",
 }
 
 func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
@@ -307,6 +317,11 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 	// Two-arg builtins
 	if rtName, ok := twoArgBuiltins[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
+	}
+
+	// Three-arg builtins
+	if rtName, ok := threeArgBuiltins[fc.Name]; ok {
+		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]))
 	}
 
 	// Special builtins
@@ -351,9 +366,17 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 
 	// User-defined function
 	if fn, ok := cg.userFuncs[fc.Name]; ok {
-		args := make([]llvmValue.Value, len(fc.Args))
-		for i, arg := range fc.Args {
-			args[i] = cg.compileExpr(arg)
+		fd := cg.userFuncDefs[fc.Name]
+		totalParams := len(fn.Params)
+		args := make([]llvmValue.Value, totalParams)
+		for i := 0; i < totalParams; i++ {
+			if i < len(fc.Args) {
+				args[i] = cg.compileExpr(fc.Args[i])
+			} else if fd != nil && i < len(fd.Params) && fd.Params[i].HasDefault() {
+				args[i] = cg.compileParamDefault(fd.Params[i])
+			} else {
+				args[i] = cg.callRT("sx_null")
+			}
 		}
 		return cg.block.NewCall(fn, args...)
 	}
@@ -377,6 +400,26 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.callRT("sx_call", val, argPtr, constant.NewInt(i32, int64(argc)))
 	}
 	return cg.callRT("sx_call", val, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
+}
+
+func (cg *CodeGen) compileParamDefault(p *parser.Param) llvmValue.Value {
+	if p.DefaultNum != nil {
+		return cg.callRT("sx_number", constant.NewFloat(types.Double, *p.DefaultNum))
+	}
+	if p.DefaultStr != nil {
+		raw := *p.DefaultStr
+		s := raw[1 : len(raw)-1]
+		return cg.callRT("sx_string", cg.globalString(s))
+	}
+	if p.DefaultBool != nil {
+		switch *p.DefaultBool {
+		case "true":
+			return cg.callRT("sx_bool", constant.NewInt(i32, 1))
+		case "false":
+			return cg.callRT("sx_bool", constant.NewInt(i32, 0))
+		}
+	}
+	return cg.callRT("sx_null")
 }
 
 func (cg *CodeGen) compilePrint(fc *parser.FuncCall) llvmValue.Value {

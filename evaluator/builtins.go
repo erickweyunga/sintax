@@ -35,6 +35,9 @@ func init() {
 		"err":    builtinErr,
 		"error":  builtinError,
 		"sort":   builtinSort,
+		"map":    builtinMap,
+		"filter": builtinFilter,
+		"reduce": builtinReduce,
 	}
 }
 
@@ -375,4 +378,110 @@ func compareObjects(a, b object.Object) int {
 		return 1
 	}
 	return 0
+}
+
+// map — apply a function to each element of a list
+func builtinMap(args []*parser.Expr, env *Environment) object.Object {
+	if len(args) != 2 {
+		runtimeError("map() requires 2 arguments (list, fn)")
+	}
+	list := evalExpr(args[0], env)
+	fn := evalExpr(args[1], env)
+
+	l, ok := list.(*object.ListObj)
+	if !ok {
+		runtimeError("map() first argument must be a list")
+	}
+	fnObj, ok := fn.(*object.FuncObj)
+	if !ok {
+		runtimeError("map() second argument must be a function")
+	}
+
+	results := make([]object.Object, len(l.Elements))
+	for i, elem := range l.Elements {
+		closureEnv := NewEnclosed(fnObj.Env.(*Environment))
+		if len(fnObj.Params) > 0 {
+			closureEnv.Set(fnObj.Params[0].Name, elem)
+		}
+		result := evalStatements(fnObj.Body.Statements, closureEnv)
+		if ret, ok := result.(*object.ReturnObj); ok {
+			results[i] = ret.Value
+		} else {
+			results[i] = result
+		}
+	}
+	return &object.ListObj{Elements: results}
+}
+
+// filter — keep elements where fn returns true
+func builtinFilter(args []*parser.Expr, env *Environment) object.Object {
+	if len(args) != 2 {
+		runtimeError("filter() requires 2 arguments (list, fn)")
+	}
+	list := evalExpr(args[0], env)
+	fn := evalExpr(args[1], env)
+
+	l, ok := list.(*object.ListObj)
+	if !ok {
+		runtimeError("filter() first argument must be a list")
+	}
+	fnObj, ok := fn.(*object.FuncObj)
+	if !ok {
+		runtimeError("filter() second argument must be a function")
+	}
+
+	var results []object.Object
+	for _, elem := range l.Elements {
+		closureEnv := NewEnclosed(fnObj.Env.(*Environment))
+		if len(fnObj.Params) > 0 {
+			closureEnv.Set(fnObj.Params[0].Name, elem)
+		}
+		result := evalStatements(fnObj.Body.Statements, closureEnv)
+		if ret, ok := result.(*object.ReturnObj); ok {
+			result = ret.Value
+		}
+		if object.IsTruthy(result) {
+			results = append(results, elem)
+		}
+	}
+	if results == nil {
+		results = []object.Object{}
+	}
+	return &object.ListObj{Elements: results}
+}
+
+// reduce — fold a list with an accumulator
+func builtinReduce(args []*parser.Expr, env *Environment) object.Object {
+	if len(args) != 3 {
+		runtimeError("reduce() requires 3 arguments (list, fn, initial)")
+	}
+	list := evalExpr(args[0], env)
+	fn := evalExpr(args[1], env)
+	acc := evalExpr(args[2], env)
+
+	l, ok := list.(*object.ListObj)
+	if !ok {
+		runtimeError("reduce() first argument must be a list")
+	}
+	fnObj, ok := fn.(*object.FuncObj)
+	if !ok {
+		runtimeError("reduce() second argument must be a function")
+	}
+
+	for _, elem := range l.Elements {
+		closureEnv := NewEnclosed(fnObj.Env.(*Environment))
+		if len(fnObj.Params) > 0 {
+			closureEnv.Set(fnObj.Params[0].Name, acc)
+		}
+		if len(fnObj.Params) > 1 {
+			closureEnv.Set(fnObj.Params[1].Name, elem)
+		}
+		result := evalStatements(fnObj.Body.Statements, closureEnv)
+		if ret, ok := result.(*object.ReturnObj); ok {
+			acc = ret.Value
+		} else {
+			acc = result
+		}
+	}
+	return acc
 }

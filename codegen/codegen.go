@@ -29,6 +29,7 @@ type CodeGen struct {
 	strConstants map[string]*ir.Global
 	strCounter   int
 	userFuncs    map[string]*ir.Func
+	userFuncDefs map[string]*parser.FuncDef // stores AST for default param lookup
 
 	loopExitBlocks     []*ir.Block
 	loopContinueBlocks []*ir.Block
@@ -45,6 +46,7 @@ func New() *CodeGen {
 		rtFuncs:      make(map[string]*ir.Func),
 		strConstants: make(map[string]*ir.Global),
 		userFuncs:    make(map[string]*ir.Func),
+		userFuncDefs: make(map[string]*parser.FuncDef),
 	}
 	cg.declareRuntime()
 	return cg
@@ -152,6 +154,9 @@ var runtimeDecls = []rtDecl{
 	// Utilities
 	{"sx_len", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_sort", sxValuePtr, []types.Type{sxValuePtr}},
+	{"sx_map", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_filter", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_reduce", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
 	{"sx_type", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_range", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
 	{"sx_range3", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
@@ -348,10 +353,11 @@ func (cg *CodeGen) forwardDeclare(fd *parser.FuncDef) {
 	}
 	params := make([]*ir.Param, len(fd.Params))
 	for i, p := range fd.Params {
-		params[i] = ir.NewParam(p.Name, sxValuePtr)
+		params[i] = ir.NewParam(p.GetName(), sxValuePtr)
 	}
 	fn := cg.mod.NewFunc("sx_user_"+fd.Name, sxValuePtr, params...)
 	cg.userFuncs[fd.Name] = fn
+	cg.userFuncDefs[fd.Name] = fd
 }
 
 func (cg *CodeGen) emitError(msg string) {

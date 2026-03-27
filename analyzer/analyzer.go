@@ -40,6 +40,7 @@ func (e Error) Format() string {
 type FuncInfo struct {
 	Name       string
 	Arity      int
+	MinArity   int      // minimum args (accounting for defaults)
 	ParamNames []string
 	ParamTypes []string // type per param ("" = untyped)
 	ReturnType  string   // "" = untyped, first type for inference
@@ -424,7 +425,7 @@ func (a *Analyzer) registerFunc(fd *parser.FuncDef) {
 	paramNames := make([]string, len(fd.Params))
 	paramTypes := make([]string, len(fd.Params))
 	for i, p := range fd.Params {
-		paramNames[i] = p.Name
+		paramNames[i] = p.GetName()
 		if p.Type != nil {
 			paramTypes[i] = *p.Type
 		}
@@ -434,9 +435,16 @@ func (a *Analyzer) registerFunc(fd *parser.FuncDef) {
 	if len(retTypes) > 0 {
 		retType = retTypes[0]
 	}
+	minArity := 0
+	for _, p := range fd.Params {
+		if !p.HasDefault() {
+			minArity++
+		}
+	}
 	a.functions[fd.Name] = &FuncInfo{
 		Name:        fd.Name,
 		Arity:       len(fd.Params),
+		MinArity:    minArity,
 		ParamNames:  paramNames,
 		ParamTypes:  paramTypes,
 		ReturnType:  retType,
@@ -464,6 +472,9 @@ func (a *Analyzer) registerBuiltins() {
 		"error":  1,
 		"err":    1,
 		"sort":   1,
+		"map":    2,
+		"filter": 2,
+		"reduce": 3,
 	}
 	for name, arity := range builtins {
 		a.functions[name] = &FuncInfo{
@@ -633,16 +644,16 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 	// Check for duplicate parameter names
 	seen := make(map[string]bool)
 	for _, p := range fd.Params {
-		if seen[p.Name] {
-			a.addError(line, "Duplicate parameter '%s' in function '%s'", p.Name, fd.Name)
+		if seen[p.GetName()] {
+			a.addError(line, "Duplicate parameter '%s' in function '%s'", p.GetName(), fd.Name)
 		}
-		seen[p.Name] = true
+		seen[p.GetName()] = true
 	}
 
 	// Enforce typed parameters
 	for _, p := range fd.Params {
 		if p.Type == nil {
-			a.addError(line, "Parameter '%s' in function '%s' must have a type", p.Name, fd.Name)
+			a.addError(line, "Parameter '%s' in function '%s' must have a type", p.GetName(), fd.Name)
 		}
 	}
 
@@ -669,8 +680,9 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 		if p.Type != nil {
 			typ = *p.Type
 		}
-		a.define(p.Name, typ, line)
-		a.scopes[len(a.scopes)-1][p.Name].Used = true
+		pName := p.GetName()
+		a.define(pName, typ, line)
+		a.scopes[len(a.scopes)-1][pName].Used = true
 	}
 
 	// Register nested function defs (forward declaration within function body)
@@ -1166,7 +1178,7 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 	// Mark function as used
 	if f, ok := a.functions[fc.Name]; ok {
 		f.Used = true
-		a.checkArity(fc.Name, len(fc.Args), f.Arity, line)
+		a.checkArityRange(fc.Name, len(fc.Args), f.MinArity, f.Arity, line)
 		// Type check arguments against parameter types
 		a.checkArgTypes(fc, f, line)
 		return
@@ -1361,7 +1373,7 @@ func (a *Analyzer) inferBuiltinReturnType(name string) string {
 		return "bool"
 	case "num":
 		return "num"
-	case "keys", "values", "range", "split", "sort":
+	case "keys", "values", "range", "split", "sort", "map", "filter":
 		return "list"
 	case "print":
 		return "null"
@@ -1436,6 +1448,16 @@ func (a *Analyzer) findVar(name string) *VarInfo {
 		}
 	}
 	return nil
+}
+
+func (a *Analyzer) checkArityRange(name string, got, minExpected, maxExpected int, line int) {
+	if minExpected == maxExpected {
+		a.checkArity(name, got, maxExpected, line)
+		return
+	}
+	if got < minExpected || got > maxExpected {
+		a.addError(line, "'%s' expects %d to %d args, got %d", name, minExpected, maxExpected, got)
+	}
 }
 
 func (a *Analyzer) checkArity(name string, got, expected int, line int) {
