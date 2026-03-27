@@ -126,8 +126,6 @@ func extractTests(filename string) []TestCase {
 	return tests
 }
 
-// runTestFile generates a test program from the source + assertions,
-// compiles it to a native binary, runs it, and parses PASS/FAIL output.
 func runTestFile(filename string, tests []TestCase) FileResult {
 	start := time.Now()
 	r := FileResult{Name: filename, Tests: len(tests)}
@@ -136,7 +134,6 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	sourceStr := string(source)
 	result := preprocessor.Process(sourceStr)
 
-	// Build the test program: original source + compiled assertions
 	testSource := buildTestProgram(sourceStr, tests, result.Imports)
 	testResult := preprocessor.Process(testSource)
 
@@ -149,7 +146,6 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 		return r
 	}
 
-	// Compile to binary
 	cg := codegen.New()
 	compileImports(cg, testResult.Imports, false)
 	llvmIR := cg.Generate(program)
@@ -168,7 +164,6 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 		return r
 	}
 
-	// Run and parse output
 	runCmd := exec.Command(binFile)
 	output, runErr := runCmd.CombinedOutput()
 	outputStr := string(output)
@@ -203,15 +198,12 @@ func runTestFile(filename string, tests []TestCase) FileResult {
 	return r
 }
 
-// buildTestProgram appends test assertions to the source code.
-// Each -- test: expr becomes: if expr: print("PASS N") else: print("FAIL N")
 func buildTestProgram(source string, tests []TestCase, imports []preprocessor.Import) string {
 	var b strings.Builder
 	b.WriteString(source)
 	b.WriteString("\n")
 
 	for _, tc := range tests {
-		// Rewrite namespace calls in test expressions
 		expr := preprocessor.RewriteLine(tc.Expr, imports)
 		b.WriteString(fmt.Sprintf("if %s:\n", expr))
 		b.WriteString(fmt.Sprintf("    print(\"PASS %d\")\n", tc.Line))

@@ -9,7 +9,6 @@ import (
 
 func libCommand() {
 	if len(os.Args) < 3 {
-		// List all stdlib modules
 		stdlibDir := findStdlibDir()
 		if stdlibDir == "" {
 			fmt.Println("No stdlib found. Run 'make install'.")
@@ -32,7 +31,6 @@ func libCommand() {
 		return
 	}
 
-	// Show specific module
 	name := os.Args[2]
 	stdlibDir := findStdlibDir()
 	if stdlibDir == "" {
@@ -47,12 +45,10 @@ func libCommand() {
 		os.Exit(1)
 	}
 
-	// Print all fn signatures
 	fmt.Printf("%s\n\n", name)
 	for _, line := range strings.Split(string(source), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "pub fn ") {
-			// Show without "pub " prefix for cleaner output
 			fmt.Printf("  %s\n", strings.TrimPrefix(trimmed, "pub "))
 		}
 	}

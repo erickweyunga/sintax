@@ -77,7 +77,6 @@ func evalUnary(u *parser.Unary, env *Environment) object.Object {
 }
 
 func evalPrimary(p *parser.Primary, env *Environment) object.Object {
-	// Evaluate base value
 	var result object.Object
 	switch {
 	case p.Lambda != nil:
@@ -94,7 +93,6 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 		raw := *p.String
 		s := raw[1 : len(raw)-1]
 		if raw[0] == '`' {
-			// Backtick: multi-line string, process \n back to newlines
 			s = strings.ReplaceAll(s, `\n`, "\n")
 		} else if raw[0] == '\'' {
 			s = strings.ReplaceAll(s, "\\'", "'")
@@ -124,7 +122,6 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 		result = object.Null
 	}
 
-	// Apply suffix chain: [index], .method(args), chained
 	for _, s := range p.Suffix {
 		if s.Index != nil {
 			result = evalIndexOn(result, evalExpr(s.Index.Index, env))
@@ -140,7 +137,6 @@ func evalPrimary(p *parser.Primary, env *Environment) object.Object {
 	return result
 }
 
-// evalIndexOn indexes into any collection value.
 func evalIndexOn(obj object.Object, idx object.Object) object.Object {
 	switch o := obj.(type) {
 	case *object.DictObj:
@@ -262,13 +258,11 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 		runtimeError("'%s' is not a function", fc.Name)
 	}
 
-	// Evaluate args
 	evaledArgs := make([]object.Object, len(fc.Args))
 	for i, arg := range fc.Args {
 		evaledArgs[i] = evalExpr(arg, env)
 	}
 
-	// Count required params (no default)
 	requiredCount := 0
 	for _, p := range fn.Params {
 		if !p.HasDefault {
@@ -316,14 +310,12 @@ func evalFuncCall(fc *parser.FuncCall, env *Environment) object.Object {
 	return result
 }
 
-// checkReturnTypes validates that a function's return value matches its declared types.
 func checkReturnTypes(fn *object.FuncObj, val object.Object) {
 	if len(fn.ReturnTypes) == 0 || val == nil {
 		return
 	}
-	// void means the return value must be null
 	if fn.ReturnTypes[0] == "void" {
-		return // void functions can return anything (it's discarded)
+		return
 	}
 	retType := object.TypeName(val)
 	for _, t := range fn.ReturnTypes {
@@ -334,14 +326,11 @@ func checkReturnTypes(fn *object.FuncObj, val object.Object) {
 	runtimeError("Function '%s' returns %s, expected %s", fn.Name, retType, strings.Join(fn.ReturnTypes, " | "))
 }
 
-// --- Lambda ---
-
 func evalLambda(l *parser.Lambda, env *Environment) object.Object {
 	params := make([]object.FuncParam, len(l.Params))
 	for i, name := range l.Params {
 		params[i] = object.FuncParam{Name: name}
 	}
-	// Wrap the expression as a return statement in a block
 	body := &parser.Block{
 		Statements: []*parser.Statement{
 			{ReturnStmt: &parser.ReturnStmt{Value: l.Body}},
@@ -354,8 +343,6 @@ func evalLambda(l *parser.Lambda, env *Environment) object.Object {
 		Env:    env,
 	}
 }
-
-// --- Methods ---
 
 func evalMethod(obj object.Object, method string, args []object.Object) object.Object {
 	switch o := obj.(type) {
@@ -599,8 +586,6 @@ func evalNumberMethod(n *object.NumberObj, method string, args []object.Object) 
 	return object.Null
 }
 
-// --- Operators ---
-
 func evalComparisonOp(op string, left, right object.Object) object.Object {
 	ln, lok := left.(*object.NumberObj)
 	rn, rok := right.(*object.NumberObj)
@@ -632,7 +617,6 @@ func evalComparisonOp(op string, left, right object.Object) object.Object {
 		}
 	}
 
-	// Bool equality
 	lb, lbok := left.(*object.BoolObj)
 	rb, rbok := right.(*object.BoolObj)
 	if lbok && rbok {
@@ -644,7 +628,6 @@ func evalComparisonOp(op string, left, right object.Object) object.Object {
 		}
 	}
 
-	// Null equality
 	if _, lok := left.(*object.NullObj); lok {
 		if _, rok := right.(*object.NullObj); rok {
 			if op == "==" {
@@ -701,7 +684,6 @@ func evalArithOp(op string, left, right object.Object) object.Object {
 		}
 	}
 
-	// String * num → repeat
 	if op == "*" {
 		if ls, ok := left.(*object.StringObj); ok {
 			if rn, ok := right.(*object.NumberObj); ok {

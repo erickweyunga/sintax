@@ -71,7 +71,6 @@ func buildCommand() {
 	fmt.Printf("Done! Run: ./%s\n", outputName)
 }
 
-// clangCompile links an LLVM IR file with the C runtime into a native binary.
 func clangCompile(irFile, outputFile string) error {
 	runtimePath := findRuntime()
 	runtimeDir := filepath.Dir(runtimePath)
@@ -89,15 +88,12 @@ func clangCompile(irFile, outputFile string) error {
 	args = append(args, cFiles...)
 	args = append(args, "-lm")
 
-	// Boehm GC — use bundled source or system library
 	gcDir := filepath.Join(runtimeDir, "gc")
 	gcAllC := filepath.Join(gcDir, "gc_all.c")
 	gcInclude := filepath.Join(gcDir, "include")
 	if _, err := os.Stat(gcAllC); err == nil {
-		// Bundled GC — compile from source (cached as .o)
 		gcObj := filepath.Join(gcDir, "gc.o")
 		if _, err := os.Stat(gcObj); err != nil {
-			// Compile gc_all.c → gc.o (only once)
 			gcCompileArgs := []string{"-c", "-O2", "-I" + gcInclude,
 				"-DGC_BUILTIN_ATOMIC",
 				"-DALL_INTERIOR_POINTERS",
@@ -116,7 +112,6 @@ func clangCompile(irFile, outputFile string) error {
 		}
 		args = append(args, "-DSX_USE_GC", "-I"+gcInclude, gcObj)
 	} else {
-		// Fall back to system-installed libgc
 		found := false
 		for _, lib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
 			inc := strings.Replace(lib, "/lib", "/include", 1)
@@ -136,7 +131,6 @@ func clangCompile(irFile, outputFile string) error {
 		}
 	}
 
-	// Check for libcurl (HTTP support)
 	for _, curlLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
 		curlInclude := strings.Replace(curlLib, "/lib", "/include", 1)
 		for _, ext := range []string{"libcurl.dylib", "libcurl.a", "libcurl.so", "libcurl.tbd"} {
@@ -146,7 +140,6 @@ func clangCompile(irFile, outputFile string) error {
 			}
 		}
 	}
-	// macOS: check if curl.h exists (system SDK includes it)
 	if _, err := exec.Command("xcrun", "--show-sdk-path").Output(); err == nil {
 		args = append(args, "-DSX_USE_CURL", "-lcurl")
 	}
@@ -191,7 +184,6 @@ func findRuntime() string {
 	return ""
 }
 
-// compileImports parses imported .sx modules and compiles their functions.
 func compileImports(cg *codegen.CodeGen, imports []preprocessor.Import, verbose bool) {
 	for _, imp := range imports {
 		modName := imp.Module

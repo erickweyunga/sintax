@@ -100,23 +100,14 @@ func (cg *CodeGen) compileFuncDef(fd *parser.FuncDef) {
 	cg.scopes = prevScopes
 }
 
-// compileNestedFuncDef compiles a function defined inside another function
-// as a closure. Captured variables are stored in a heap-allocated environment.
 func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 	captures := cg.findCaptures(fd)
 	envSize := len(captures)
-
-	// 1. For each captured variable, allocate a heap cell (SxValue**)
-	//    so both parent and closure read/write through the same pointer.
 	var envSlots []llvmValue.Value
 	for _, name := range captures {
 		varPtr, _ := cg.resolveVar(name)
 
-		// Check if this variable is already a heap cell (from a previous
-		// closure in the same scope). If so, reuse it.
-		// A heap cell is a bitcast result; a stack alloca is an InstAlloca.
 		if _, isAlloca := varPtr.(*ir.InstAlloca); isAlloca {
-			// First time capturing — promote from stack to heap cell
 			cell := cg.block.NewCall(cg.rtFuncs["sx_alloc_env"], constant.NewInt(i64, 8))
 			cellTyped := cg.block.NewBitCast(cell, types.NewPointer(sxValuePtr))
 
@@ -126,16 +117,12 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 			cg.setVarPtr(name, cellTyped)
 			envSlots = append(envSlots, cg.block.NewBitCast(cellTyped, sxValuePtr))
 		} else {
-			// Already a heap cell — reuse it
 			envSlots = append(envSlots, cg.block.NewBitCast(varPtr, sxValuePtr))
 		}
 	}
 
-	// 2. Build env array on the stack: SxValue* env[n] = {cell0, cell1, ...}
-	//    Then heap-copy it so it outlives this stack frame.
 	var envArray llvmValue.Value
 	if envSize > 0 {
-		// Allocate heap env array
 		heapEnv := cg.block.NewCall(cg.rtFuncs["sx_alloc_env"],
 			constant.NewInt(i64, int64(envSize*8)))
 		heapEnvTyped := cg.block.NewBitCast(heapEnv, types.NewPointer(sxValuePtr))
@@ -148,7 +135,6 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 		envArray = constant.NewNull(sxValuePtr)
 	}
 
-	// 3. Compile the closure function body
 	cg.lambdaCounter++
 	closureName := fmt.Sprintf("sx_closure_%s_%d", fd.Name, cg.lambdaCounter)
 
@@ -172,7 +158,6 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 	cg.scopes = []map[string]llvmValue.Value{}
 	cg.pushScope()
 
-	// Load params from args array
 	for i, p := range fd.Params {
 		argPtr := entry.NewGetElementPtr(sxValuePtr, closureFn.Params[0], constant.NewInt(i32, int64(i)))
 		argVal := entry.NewLoad(sxValuePtr, argPtr)
@@ -181,9 +166,6 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 		cg.scopes[len(cg.scopes)-1][p.GetName()] = alloca
 	}
 
-	// Load captured variables from env — each slot is a pointer to
-	// a heap cell (SxValue**). We use the cell directly as the variable's
-	// storage, so reads/writes are shared with the enclosing scope.
 	for i, name := range captures {
 		envSlotPtr := entry.NewGetElementPtr(sxValuePtr, closureFn.Params[2], constant.NewInt(i32, int64(i)))
 		cellRaw := entry.NewLoad(sxValuePtr, envSlotPtr)
@@ -199,20 +181,16 @@ func (cg *CodeGen) compileNestedFuncDef(fd *parser.FuncDef) {
 	cg.vars = prevVars
 	cg.scopes = prevScopes
 
-	// 4. Create the closure value
 	fnPtr := cg.block.NewBitCast(closureFn, sxValuePtr)
 	closureVal := cg.callRT("sx_closure", fnPtr, envArray, constant.NewInt(i32, int64(envSize)))
 	cg.setVar(fd.Name, closureVal)
 }
 
-// compileFuncBody compiles the statements of a function body with implicit return.
-// The last statement's value is returned implicitly (like the Go evaluator).
+// compileFuncBody compiles statements with implicit return for the last expression.
 func (cg *CodeGen) compileFuncBody(stmts []*parser.Statement) {
 	for i, stmt := range stmts {
 		isLast := i == len(stmts)-1
-
 		if isLast && cg.block.Term == nil {
-			// Implicit return for the last statement
 			switch {
 			case stmt.ExprStmt != nil:
 				val := cg.compileExpr(stmt.ExprStmt.Expr)
@@ -243,24 +221,15 @@ func (cg *CodeGen) compileFuncBody(stmts []*parser.Statement) {
 	}
 }
 
-// findCaptures returns the names of variables from the enclosing scope
-// that are referenced inside a function body.
 func (cg *CodeGen) findCaptures(fd *parser.FuncDef) []string {
-	// Collect all variable names used in the function body
 	used := map[string]bool{}
 	cg.collectIdents(fd.Body.Statements, used)
-
-	// Subtract parameters (they're local, not captured)
 	for _, p := range fd.Params {
 		delete(used, p.GetName())
 	}
-
-	// Subtract builtins and constants
 	for _, name := range []string{"true", "false", "null"} {
 		delete(used, name)
 	}
-
-	// Only keep names that exist in the current scope
 	var captures []string
 	for name := range used {
 		if _, ok := cg.resolveVar(name); ok {
@@ -270,7 +239,6 @@ func (cg *CodeGen) findCaptures(fd *parser.FuncDef) []string {
 	return captures
 }
 
-// collectIdents walks statements and collects all identifier references.
 func (cg *CodeGen) collectIdents(stmts []*parser.Statement, names map[string]bool) {
 	for _, stmt := range stmts {
 		switch {
@@ -618,7 +586,6 @@ func (cg *CodeGen) compileTypedAssign(ta *parser.TypedAssign) {
 
 func (cg *CodeGen) compileIndexAssign(ia *parser.IndexAssign) {
 	target := cg.getVar(ia.Name)
-	// Navigate through all indices except the last
 	for i := 0; i < len(ia.Indices)-1; i++ {
 		idx := cg.compileExpr(ia.Indices[i].Index)
 		target = cg.callRT("sx_index", target, idx)

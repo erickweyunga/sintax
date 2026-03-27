@@ -15,7 +15,6 @@ import (
 const prompt = ">>> "
 const blockPrompt = "... "
 
-// Start launches the interactive Sintax REPL.
 func Start() {
 	fmt.Println("Sintax REPL v0.1.0")
 	fmt.Println("Type 'exit' to quit.")
@@ -37,7 +36,6 @@ func Start() {
 			break
 		}
 
-		// Accumulate block input when line ends with ":"
 		input := line
 		if strings.HasSuffix(strings.TrimSpace(line), ":") {
 			input = readBlock(scanner, line)
@@ -69,7 +67,6 @@ func Start() {
 	}
 }
 
-// readBlock collects indented lines for a block until an empty line is entered.
 func readBlock(scanner *bufio.Scanner, firstLine string) string {
 	lines := []string{firstLine}
 	for {

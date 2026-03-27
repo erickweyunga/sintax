@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/erickweyunga/sintax/parser"
 	"github.com/erickweyunga/sintax/preprocessor"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	llvmValue "github.com/llir/llvm/ir/value"
-
-	"github.com/erickweyunga/sintax/parser"
 )
 
 func (cg *CodeGen) compileExpr(expr *parser.Expr) llvmValue.Value {
@@ -168,15 +167,12 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 		raw := *p.String
 		s := raw[1 : len(raw)-1]
 		if raw[0] == '`' {
-			// Backtick: multi-line string, process \n back to newlines
 			s = strings.ReplaceAll(s, `\n`, "\n")
 			result = cg.callRT("sx_string", cg.globalString(s))
 		} else if raw[0] == '\'' {
-			// Single-quoted: raw string, no interpolation
 			s = strings.ReplaceAll(s, "\\'", "'")
 			result = cg.callRT("sx_string", cg.globalString(s))
 		} else {
-			// Double-quoted: escapes + interpolation
 			s = preprocessor.ProcessEscapes(s)
 			if hasInterpolation(s) {
 				result = cg.compileInterpolatedString(s)
@@ -201,7 +197,6 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 		result = cg.callRT("sx_null")
 	}
 
-	// Suffix chain: [index] and .method(args) interleaved
 	for _, s := range p.Suffix {
 		if s.Index != nil {
 			idx := cg.compileExpr(s.Index.Index)
@@ -213,7 +208,6 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 			if argc == 0 {
 				result = cg.callRT("sx_method", result, nameStr, constant.NewNull(sxValuePtr), constant.NewInt(i32, 0))
 			} else {
-				// Allocate array with enough slots for ALL arguments
 				argArray := cg.block.NewAlloca(types.NewArray(uint64(argc), sxValuePtr))
 				for i, arg := range mc.Args {
 					val := cg.compileExpr(arg)
@@ -234,7 +228,6 @@ func (cg *CodeGen) compilePrimary(p *parser.Primary) llvmValue.Value {
 	return result
 }
 
-// Native function mappings — __native_* calls map directly to C runtime
 var nativeOneArg = map[string]string{
 	"__native_sqrt": "__native_sqrt", "__native_sin": "__native_sin",
 	"__native_cos": "__native_cos", "__native_tan": "__native_tan",
@@ -283,7 +276,6 @@ var nativeFourArg = map[string]string{
 	"__native_http_request": "__native_http_request",
 }
 
-// Builtin mappings
 var oneArgBuiltins = map[string]string{
 	"type":   "sx_type",
 	"len":    "sx_len",
@@ -309,22 +301,18 @@ var threeArgBuiltins = map[string]string{
 }
 
 func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
-	// Single-arg builtins
 	if rtName, ok := oneArgBuiltins[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]))
 	}
 
-	// Two-arg builtins
 	if rtName, ok := twoArgBuiltins[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	}
 
-	// Three-arg builtins
 	if rtName, ok := threeArgBuiltins[fc.Name]; ok {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]))
 	}
 
-	// Special builtins
 	switch fc.Name {
 	case "print":
 		return cg.compilePrint(fc)
@@ -347,7 +335,6 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.callRT("sx_input", cg.callRT("sx_null"))
 	}
 
-	// Native bridge: __native_* → C runtime
 	if rtName, ok := nativeNoArg[fc.Name]; ok {
 		return cg.callRT(rtName)
 	}
@@ -364,7 +351,6 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.callRT(rtName, cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]), cg.compileExpr(fc.Args[3]))
 	}
 
-	// User-defined function
 	if fn, ok := cg.userFuncs[fc.Name]; ok {
 		fd := cg.userFuncDefs[fc.Name]
 		totalParams := len(fn.Params)
@@ -381,7 +367,6 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		return cg.block.NewCall(fn, args...)
 	}
 
-	// Variable that might be a lambda/function value — call via sx_call
 	val := cg.getVar(fc.Name)
 	argc := len(fc.Args)
 	if argc > 0 {
@@ -441,8 +426,6 @@ func (cg *CodeGen) compilePrint(fc *parser.FuncCall) llvmValue.Value {
 	return cg.callRT("sx_null")
 }
 
-// hasInterpolation checks if a string contains {identifier} patterns.
-// Returns false for strings like {"key": "value"} where the content isn't a valid identifier.
 func hasInterpolation(s string) bool {
 	i := 0
 	for i < len(s) {
@@ -494,7 +477,6 @@ func (cg *CodeGen) compileInterpolatedString(s string) llvmValue.Value {
 			}
 			varName := strings.TrimSpace(s[i+1 : i+end])
 			if varName == "" || !isValidIdent(varName) {
-				// Not an interpolation — keep literal
 				current += s[i : i+end+1]
 				i += end + 1
 				continue
@@ -533,7 +515,6 @@ func (cg *CodeGen) compileLambda(l *parser.Lambda) llvmValue.Value {
 	prevVars := cg.vars
 	prevScopes := cg.scopes
 
-	// Lambda uses SxFnPtr signature: SxValue* fn(SxValue** args, int argc, SxValue** env)
 	argsPtrType := types.NewPointer(sxValuePtr)
 	envPtrType := types.NewPointer(sxValuePtr)
 	fn := cg.mod.NewFunc(fnName, sxValuePtr,
@@ -549,7 +530,6 @@ func (cg *CodeGen) compileLambda(l *parser.Lambda) llvmValue.Value {
 	cg.scopes = []map[string]llvmValue.Value{}
 	cg.pushScope()
 
-	// Extract params from args array
 	for i, name := range l.Params {
 		argPtr := entry.NewGetElementPtr(sxValuePtr, fn.Params[0], constant.NewInt(i32, int64(i)))
 		argVal := entry.NewLoad(sxValuePtr, argPtr)
@@ -567,7 +547,6 @@ func (cg *CodeGen) compileLambda(l *parser.Lambda) llvmValue.Value {
 	cg.vars = prevVars
 	cg.scopes = prevScopes
 
-	// Cast to i8* and wrap as SxValue function
 	fnPtr := cg.block.NewBitCast(fn, sxValuePtr)
 	return cg.callRT("sx_function", fnPtr)
 }

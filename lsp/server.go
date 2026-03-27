@@ -15,16 +15,14 @@ import (
 	"github.com/erickweyunga/sintax/preprocessor"
 )
 
-// Server is a minimal LSP server for Sintax.
 type Server struct {
 	reader  *bufio.Reader
 	writer  io.Writer
 	mu      sync.Mutex
-	docs    map[string]string // URI → source text
+	docs    map[string]string
 	rootURI string
 }
 
-// Start launches the LSP server on stdin/stdout.
 func Start(stdlibDir string) {
 	s := &Server{
 		reader: bufio.NewReader(os.Stdin),
@@ -50,7 +48,6 @@ func (s *Server) run(stdlibDir string) {
 		case "initialize":
 			s.handleInitialize(req)
 		case "initialized":
-			// no-op
 		case "shutdown":
 			s.sendResponse(req.ID, nil, nil)
 		case "exit":
@@ -66,8 +63,6 @@ func (s *Server) run(stdlibDir string) {
 		}
 	}
 }
-
-// --- Message I/O ---
 
 func (s *Server) readMessage() ([]byte, error) {
 	var contentLength int
@@ -124,8 +119,6 @@ func (s *Server) sendNotification(method string, params interface{}) {
 		Params:  params,
 	})
 }
-
-// --- Handlers ---
 
 func (s *Server) handleInitialize(req Request) {
 	var params InitializeParams
@@ -188,15 +181,11 @@ func (s *Server) handleDidClose(req Request) {
 
 	uri := params.TextDocument.URI
 	delete(s.docs, uri)
-
-	// Clear diagnostics for closed file
 	s.sendNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: []Diagnostic{},
 	})
 }
-
-// --- Diagnostics ---
 
 func (s *Server) diagnose(uri, text, stdlibDir string) {
 	filename := uriToPath(uri)
@@ -206,7 +195,6 @@ func (s *Server) diagnose(uri, text, stdlibDir string) {
 	p := parser.NewParser()
 	program, err := p.ParseString(filename, result.Source)
 	if err != nil {
-		// Parse error — report as a single diagnostic
 		s.sendNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{
 			URI: uri,
 			Diagnostics: []Diagnostic{
@@ -264,21 +252,17 @@ func sourceLine(lines []string, line int) string {
 
 func uriToPath(uri string) string {
 	path := strings.TrimPrefix(uri, "file://")
-	// Handle percent-encoded characters
 	path = strings.ReplaceAll(path, "%20", " ")
 	return filepath.Clean(path)
 }
 
-// FindStdlibDir locates the stdlib directory.
 func FindStdlibDir() string {
-	// Check SINTAX_HOME
 	if home := os.Getenv("SINTAX_HOME"); home != "" {
 		dir := filepath.Join(home, "stdlib")
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir
 		}
 	}
-	// Check ~/.sintax/stdlib
 	if userHome, err := os.UserHomeDir(); err == nil {
 		dir := filepath.Join(userHome, ".sintax", "stdlib")
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {

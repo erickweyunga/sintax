@@ -17,9 +17,6 @@ import (
 	"github.com/erickweyunga/sintax/parser"
 )
 
-// Native bridge functions — Go implementations of __native_* for the interpreter.
-// These match the C implementations in runtime/native.c.
-
 func init() {
 	natives := map[string]BuiltinFn{
 		// Math
@@ -89,8 +86,6 @@ func init() {
 	}
 }
 
-// --- Type check helpers ---
-
 func expectNum(val object.Object, fn string) *object.NumberObj {
 	n, ok := val.(*object.NumberObj)
 	if !ok {
@@ -106,8 +101,6 @@ func expectStr(val object.Object, fn string) *object.StringObj {
 	}
 	return s
 }
-
-// --- Native implementations ---
 
 func nativeMath1(fn func(float64) float64) BuiltinFn {
 	return func(args []*parser.Expr, env *Environment) object.Object {
@@ -156,14 +149,11 @@ func nativeReplace(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: strings.ReplaceAll(s.Value, old.Value, new_.Value)}
 }
 
-// trim — strip leading and trailing whitespace from a string.
 func nativeTrim(args []*parser.Expr, env *Environment) object.Object {
 	s := expectStr(evalExpr(args[0], env), "trim")
 	return &object.StringObj{Value: strings.TrimSpace(s.Value)}
 }
 
-// char_code — return the Unicode code point of the first character.
-// Returns an error for empty strings.
 func nativeCharCode(args []*parser.Expr, env *Environment) object.Object {
 	s := expectStr(evalExpr(args[0], env), "char_code")
 	if len(s.Value) == 0 {
@@ -173,7 +163,6 @@ func nativeCharCode(args []*parser.Expr, env *Environment) object.Object {
 	return &object.NumberObj{Value: float64(runes[0])}
 }
 
-// from_char_code — build a single-character string from a Unicode code point.
 func nativeFromCharCode(args []*parser.Expr, env *Environment) object.Object {
 	n := expectNum(evalExpr(args[0], env), "from_char_code")
 	code := int(n.Value)
@@ -183,7 +172,6 @@ func nativeFromCharCode(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: string(rune(code))}
 }
 
-// str_reverse — reverse a string (Unicode-safe).
 func nativeStrReverse(args []*parser.Expr, env *Environment) object.Object {
 	s := expectStr(evalExpr(args[0], env), "str_reverse")
 	runes := []rune(s.Value)
@@ -193,7 +181,6 @@ func nativeStrReverse(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: string(runes)}
 }
 
-// str_repeat — repeat a string n times.
 func nativeStrRepeat(args []*parser.Expr, env *Environment) object.Object {
 	s := expectStr(evalExpr(args[0], env), "str_repeat")
 	n := expectNum(evalExpr(args[1], env), "str_repeat")
@@ -207,8 +194,6 @@ func nativeStrRepeat(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: strings.Repeat(s.Value, count)}
 }
 
-// index_of — find first position of a substring in a string, or a value in a list.
-// Returns -1 if not found.
 func nativeIndexOf(args []*parser.Expr, env *Environment) object.Object {
 	haystack := evalExpr(args[0], env)
 	needle := evalExpr(args[1], env)
@@ -234,8 +219,6 @@ func nativeIndexOf(args []*parser.Expr, env *Environment) object.Object {
 	return object.Null
 }
 
-// slice — extract a sub-string or sub-list from start (inclusive) to end (exclusive).
-// Supports negative indices (count from end). Clamps out-of-range indices.
 func nativeSlice(args []*parser.Expr, env *Environment) object.Object {
 	val := evalExpr(args[0], env)
 	startN := expectNum(evalExpr(args[1], env), "slice")
@@ -250,7 +233,6 @@ func nativeSlice(args []*parser.Expr, env *Environment) object.Object {
 	case *object.ListObj:
 		length := len(v.Elements)
 		start, end := clampSlice(int(startN.Value), int(endN.Value), length)
-		// Copy into a new slice to avoid aliasing the original
 		sliced := make([]object.Object, end-start)
 		copy(sliced, v.Elements[start:end])
 		return &object.ListObj{Elements: sliced}
@@ -260,8 +242,6 @@ func nativeSlice(args []*parser.Expr, env *Environment) object.Object {
 	return object.Null
 }
 
-// clampSlice normalizes and clamps start/end indices for slicing.
-// Negative indices wrap from the end. Out-of-range values are clamped.
 func clampSlice(start, end, length int) (int, int) {
 	if start < 0 {
 		start = length + start
@@ -281,7 +261,6 @@ func clampSlice(start, end, length int) (int, int) {
 	return start, end
 }
 
-// objectsEqual compares two Sintax values for equality.
 func objectsEqual(a, b object.Object) bool {
 	switch av := a.(type) {
 	case *object.NumberObj:
@@ -297,13 +276,10 @@ func objectsEqual(a, b object.Object) bool {
 		_, ok := b.(*object.NullObj)
 		return ok
 	default:
-		return a == b // reference equality for lists, dicts, functions
+		return a == b
 	}
 }
 
-// --- List natives ---
-
-// list_concat — merge two lists into a new list.
 func nativeListConcat(args []*parser.Expr, env *Environment) object.Object {
 	a := evalExpr(args[0], env)
 	b := evalExpr(args[1], env)
@@ -321,8 +297,6 @@ func nativeListConcat(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ListObj{Elements: result}
 }
 
-// list_insert — insert an element at a specific index. Returns the modified list.
-// Negative indices count from the end. Out-of-range clamps to boundaries.
 func nativeListInsert(args []*parser.Expr, env *Environment) object.Object {
 	val := evalExpr(args[0], env)
 	idxN := expectNum(evalExpr(args[1], env), "list_insert")
@@ -334,12 +308,9 @@ func nativeListInsert(args []*parser.Expr, env *Environment) object.Object {
 	}
 	idx := int(idxN.Value)
 	length := len(l.Elements)
-
-	// Normalize negative index
 	if idx < 0 {
 		idx = length + idx
 	}
-	// Clamp
 	if idx < 0 {
 		idx = 0
 	}
@@ -347,14 +318,12 @@ func nativeListInsert(args []*parser.Expr, env *Environment) object.Object {
 		idx = length
 	}
 
-	// Grow slice and shift elements
 	l.Elements = append(l.Elements, nil)
 	copy(l.Elements[idx+1:], l.Elements[idx:])
 	l.Elements[idx] = item
 	return l
 }
 
-// list_reverse — reverse a list in place and return it.
 func nativeListReverse(args []*parser.Expr, env *Environment) object.Object {
 	val := evalExpr(args[0], env)
 	l, ok := val.(*object.ListObj)
@@ -367,9 +336,6 @@ func nativeListReverse(args []*parser.Expr, env *Environment) object.Object {
 	return l
 }
 
-// --- Dict natives ---
-
-// dict_delete — remove a key from a dict. Returns the removed value, or null.
 func nativeDictDelete(args []*parser.Expr, env *Environment) object.Object {
 	val := evalExpr(args[0], env)
 	key := expectStr(evalExpr(args[1], env), "dict_delete")
@@ -383,7 +349,6 @@ func nativeDictDelete(args []*parser.Expr, env *Environment) object.Object {
 		return object.Null
 	}
 	delete(d.Pairs, key.Value)
-	// Remove from ordered key list
 	for i, k := range d.Keys {
 		if k == key.Value {
 			d.Keys = append(d.Keys[:i], d.Keys[i+1:]...)
@@ -393,7 +358,6 @@ func nativeDictDelete(args []*parser.Expr, env *Environment) object.Object {
 	return removed
 }
 
-// dict_merge — merge second dict into first (mutates first). Returns the first dict.
 func nativeDictMerge(args []*parser.Expr, env *Environment) object.Object {
 	a := evalExpr(args[0], env)
 	b := evalExpr(args[1], env)
@@ -413,8 +377,6 @@ func nativeDictMerge(args []*parser.Expr, env *Environment) object.Object {
 	}
 	return da
 }
-
-// --- System natives ---
 
 func nativeReadFile(args []*parser.Expr, env *Environment) object.Object {
 	path := expectStr(evalExpr(args[0], env), "read")
@@ -477,35 +439,28 @@ func nativeTime(args []*parser.Expr, env *Environment) object.Object {
 	return &object.NumberObj{Value: float64(time.Now().Unix())}
 }
 
-// sleep — pause execution for the given number of milliseconds.
 func nativeSleep(args []*parser.Expr, env *Environment) object.Object {
 	ms := expectNum(evalExpr(args[0], env), "sleep")
 	if ms.Value < 0 {
 		return &object.ErrorObj{Message: "sleep() duration must be >= 0"}
 	}
-	if ms.Value > 86400000 { // cap at 24 hours
+	if ms.Value > 86400000 {
 		return &object.ErrorObj{Message: "sleep() duration too large (max 86400000ms)"}
 	}
 	time.Sleep(time.Duration(ms.Value) * time.Millisecond)
 	return object.Null
 }
 
-// exit — terminate the process with the given exit code.
 func nativeExit(args []*parser.Expr, env *Environment) object.Object {
 	code := expectNum(evalExpr(args[0], env), "exit")
 	os.Exit(int(code.Value))
-	return object.Null // unreachable
+	return object.Null
 }
 
-// format_time — format a unix timestamp using Go time layout tokens.
-// Sintax format tokens: YYYY, MM, DD, hh, mm, ss, tz
 func nativeFormatTime(args []*parser.Expr, env *Environment) object.Object {
 	ts := expectNum(evalExpr(args[0], env), "format_time")
 	fmtStr := expectStr(evalExpr(args[1], env), "format_time")
-
 	t := time.Unix(int64(ts.Value), 0)
-
-	// Map readable tokens to Go reference time components
 	layout := fmtStr.Value
 	layout = strings.ReplaceAll(layout, "YYYY", "2006")
 	layout = strings.ReplaceAll(layout, "MM", "01")
@@ -518,7 +473,6 @@ func nativeFormatTime(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: t.Format(layout)}
 }
 
-// rename — rename/move a file.
 func nativeRename(args []*parser.Expr, env *Environment) object.Object {
 	oldPath := expectStr(evalExpr(args[0], env), "rename")
 	newPath := expectStr(evalExpr(args[1], env), "rename")
@@ -527,8 +481,6 @@ func nativeRename(args []*parser.Expr, env *Environment) object.Object {
 	}
 	return object.Null
 }
-
-// --- JSON ---
 
 func nativeJsonParse(args []*parser.Expr, env *Environment) object.Object {
 	s := expectStr(evalExpr(args[0], env), "json/parse")
@@ -583,7 +535,7 @@ func jsonDecodeObject(dec *json.Decoder) (object.Object, error) {
 		}
 		pairs[key] = val
 	}
-	dec.Token() // consume closing }
+	dec.Token()
 	return &object.DictObj{Pairs: pairs, Keys: keys}, nil
 }
 
@@ -596,7 +548,7 @@ func jsonDecodeArray(dec *json.Decoder) (object.Object, error) {
 		}
 		elements = append(elements, val)
 	}
-	dec.Token() // consume closing ]
+	dec.Token()
 	return &object.ListObj{Elements: elements}, nil
 }
 
@@ -692,8 +644,6 @@ func jsonWriteValue(buf *strings.Builder, obj object.Object, prefix, indent stri
 	}
 }
 
-// --- Regex ---
-
 func nativeRegexMatch(args []*parser.Expr, env *Environment) object.Object {
 	pattern := expectStr(evalExpr(args[0], env), "regex_match")
 	str := expectStr(evalExpr(args[1], env), "regex_match")
@@ -729,8 +679,6 @@ func nativeRegexReplace(args []*parser.Expr, env *Environment) object.Object {
 	}
 	return &object.StringObj{Value: re.ReplaceAllString(str.Value, replacement.Value)}
 }
-
-// --- HTTP ---
 
 func nativeHttpRequest(args []*parser.Expr, env *Environment) object.Object {
 	method := expectStr(evalExpr(args[0], env), "http_request")

@@ -13,7 +13,6 @@ import (
 
 const cacheDir = ".sintax"
 
-// compileAndRun compiles a .sx file (with caching) and runs the binary.
 func compileAndRun(filename string) {
 	source, err := os.ReadFile(filename)
 	if err != nil {

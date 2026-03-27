@@ -11,28 +11,22 @@ import (
 	"github.com/erickweyunga/sintax/preprocessor"
 )
 
-// importedUserEnvs holds environments from imported modules.
 var importedUserEnvs = map[string]*Environment{}
 
-// RegisterImports processes use directives and loads modules.
 func RegisterImports(imports []preprocessor.Import) error {
 	importedUserEnvs = map[string]*Environment{}
 
 	for _, imp := range imports {
-		// Determine the file path
 		var filePath string
 		modName := imp.Module
 		if strings.HasPrefix(modName, "std/") {
-			// Stdlib: use "std/math" → find stdlib/math.sx
 			stdName := strings.TrimPrefix(modName, "std/")
 			filePath = findStdlib(stdName)
 			if filePath == "" {
 				return fmt.Errorf("Error: unknown stdlib module '%s'", modName)
 			}
-			// Override module name for namespace: std/math → math
 			imp.Module = stdName
 		} else if strings.HasSuffix(modName, ".sx") {
-			// User module: use "myfile.sx"
 			filePath = modName
 		} else {
 			return fmt.Errorf("Error: unknown module '%s' (use 'std/name' for stdlib or 'file.sx' for user modules)", modName)
@@ -46,7 +40,6 @@ func RegisterImports(imports []preprocessor.Import) error {
 }
 
 func findStdlib(name string) string {
-	// Check SINTAX_HOME/stdlib/
 	home := os.Getenv("SINTAX_HOME")
 	if home == "" {
 		userHome, _ := os.UserHomeDir()
@@ -57,7 +50,6 @@ func findStdlib(name string) string {
 		return p
 	}
 
-	// Check relative paths (development)
 	for _, rel := range []string{
 		filepath.Join("stdlib", name+".sx"),
 		filepath.Join("..", "stdlib", name+".sx"),
@@ -68,7 +60,6 @@ func findStdlib(name string) string {
 		}
 	}
 
-	// Check relative to executable
 	if exe, err := os.Executable(); err == nil {
 		if real, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = real
@@ -102,7 +93,6 @@ func loadModule(imp preprocessor.Import, filePath string) error {
 	modEnv := NewEnvironment()
 	evalStatements(program.Statements, modEnv)
 
-	// Derive module name
 	modName := strings.TrimSuffix(filepath.Base(filePath), ".sx")
 
 	switch imp.Function {
@@ -115,9 +105,6 @@ func loadModule(imp preprocessor.Import, filePath string) error {
 	return nil
 }
 
-// callImportedStdlib — removed, now handled through user module envs
-
-// callUserModule looks up a namespaced module function (module__func).
 func callUserModule(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
 	if !strings.Contains(name, "__") {
 		return nil, false
@@ -130,7 +117,6 @@ func callUserModule(name string, args []*parser.Expr, env *Environment) (object.
 	return callFromEnv(modEnv, parts[1], parts[0], args, env)
 }
 
-// callSpecificImport looks up a function imported via use "mod/func".
 func callSpecificImport(name string, args []*parser.Expr, env *Environment) (object.Object, bool) {
 	for key, modEnv := range importedUserEnvs {
 		if strings.HasPrefix(key, "__specific__"+name+"__") {

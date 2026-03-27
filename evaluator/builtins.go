@@ -11,10 +11,8 @@ import (
 	"github.com/erickweyunga/sintax/parser"
 )
 
-// BuiltinFn is the signature for built-in functions.
 type BuiltinFn func(args []*parser.Expr, env *Environment) object.Object
 
-// builtins is initialized at runtime to avoid initialization cycles.
 var builtins map[string]BuiltinFn
 
 func init() {
@@ -41,7 +39,6 @@ func init() {
 	}
 }
 
-// print — print values
 func builtinPrint(args []*parser.Expr, env *Environment) object.Object {
 	vals := make([]string, len(args))
 	for i, arg := range args {
@@ -51,7 +48,6 @@ func builtinPrint(args []*parser.Expr, env *Environment) object.Object {
 	return object.Null
 }
 
-// type — return the type of a value as a string
 func builtinType(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("type() requires 1 argument")
@@ -59,7 +55,6 @@ func builtinType(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: object.TypeName(evalExpr(args[0], env))}
 }
 
-// len — return the length of a list or string
 func builtinLen(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("len() requires 1 argument")
@@ -78,7 +73,6 @@ func builtinLen(args []*parser.Expr, env *Environment) object.Object {
 	return object.Null
 }
 
-// push — append an item to a list
 func builtinPush(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 2 {
 		runtimeError("push() requires 2 arguments (list, element)")
@@ -94,7 +88,6 @@ func builtinPush(args []*parser.Expr, env *Environment) object.Object {
 	return l
 }
 
-// pop — remove an item from a list by index
 func builtinPop(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 2 {
 		runtimeError("pop() requires 2 arguments (list, index)")
@@ -119,8 +112,6 @@ func builtinPop(args []*parser.Expr, env *Environment) object.Object {
 	return removed
 }
 
-// range — generate a range of numbers as a list
-// range(n), range(start, end), range(start, end, step)
 func builtinRange(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) < 1 || len(args) > 3 {
 		runtimeError("range() requires 1, 2, or 3 arguments")
@@ -173,7 +164,6 @@ func builtinRange(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ListObj{Elements: elements}
 }
 
-// keys — return keys of a dict as a list
 func builtinKeys(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("keys() requires 1 argument")
@@ -190,7 +180,6 @@ func builtinKeys(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ListObj{Elements: elements}
 }
 
-// values — return values of a dict as a list
 func builtinValues(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("values() requires 1 argument")
@@ -207,7 +196,6 @@ func builtinValues(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ListObj{Elements: elements}
 }
 
-// has — check if a dict has a key
 func builtinHas(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 2 {
 		runtimeError("has() requires 2 arguments (dict, key)")
@@ -229,13 +217,11 @@ func builtinHas(args []*parser.Expr, env *Environment) object.Object {
 
 var stdinReader = bufio.NewReader(os.Stdin)
 
-// input — read user input, optionally with a prompt
 func builtinInput(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) > 1 {
 		runtimeError("input() requires 0 or 1 arguments")
 	}
 
-	// Print prompt if provided
 	if len(args) == 1 {
 		prompt := evalExpr(args[0], env)
 		fmt.Print(prompt.Inspect())
@@ -243,8 +229,6 @@ func builtinInput(args []*parser.Expr, env *Environment) object.Object {
 
 	input, _ := stdinReader.ReadString('\n')
 	input = strings.TrimRight(input, "\r\n")
-
-	// Try to convert to number
 	if num, err := strconv.ParseFloat(input, 64); err == nil {
 		return &object.NumberObj{Value: num}
 	}
@@ -252,7 +236,6 @@ func builtinInput(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: input}
 }
 
-// num — convert to number
 func builtinNum(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("num() requires 1 argument")
@@ -278,7 +261,6 @@ func builtinNum(args []*parser.Expr, env *Environment) object.Object {
 	return object.Null
 }
 
-// str — convert to string
 func builtinStr(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("str() requires 1 argument")
@@ -287,7 +269,6 @@ func builtinStr(args []*parser.Expr, env *Environment) object.Object {
 	return &object.StringObj{Value: val.Inspect()}
 }
 
-// bool — convert to boolean
 func builtinBool(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("bool() requires 1 argument")
@@ -296,7 +277,6 @@ func builtinBool(args []*parser.Expr, env *Environment) object.Object {
 	return &object.BoolObj{Value: object.IsTruthy(val)}
 }
 
-// err — check if a value is an error
 func builtinErr(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("err() requires 1 argument")
@@ -306,7 +286,6 @@ func builtinErr(args []*parser.Expr, env *Environment) object.Object {
 	return &object.BoolObj{Value: isErr}
 }
 
-// error — create an error value
 func builtinError(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("error() requires 1 argument")
@@ -315,7 +294,6 @@ func builtinError(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ErrorObj{Message: val.Inspect()}
 }
 
-// sort — sort a list in place and return it
 func builtinSort(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 1 {
 		runtimeError("sort() requires 1 argument")
@@ -325,7 +303,6 @@ func builtinSort(args []*parser.Expr, env *Environment) object.Object {
 	if !ok {
 		runtimeError("sort() requires a list")
 	}
-	// Sort using comparison: numbers by value, strings alphabetically
 	sortList(l.Elements)
 	return l
 }
@@ -344,7 +321,6 @@ func sortList(items []object.Object) {
 }
 
 func compareObjects(a, b object.Object) int {
-	// Numbers compare by value
 	an, aok := a.(*object.NumberObj)
 	bn, bok := b.(*object.NumberObj)
 	if aok && bok {
@@ -356,7 +332,6 @@ func compareObjects(a, b object.Object) int {
 		}
 		return 0
 	}
-	// Strings compare alphabetically
 	as, aok := a.(*object.StringObj)
 	bs, bok := b.(*object.StringObj)
 	if aok && bok {
@@ -368,7 +343,6 @@ func compareObjects(a, b object.Object) int {
 		}
 		return 0
 	}
-	// Mixed types: compare by type name
 	ta := object.TypeName(a)
 	tb := object.TypeName(b)
 	if ta < tb {
@@ -380,7 +354,6 @@ func compareObjects(a, b object.Object) int {
 	return 0
 }
 
-// map — apply a function to each element of a list
 func builtinMap(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 2 {
 		runtimeError("map() requires 2 arguments (list, fn)")
@@ -413,7 +386,6 @@ func builtinMap(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ListObj{Elements: results}
 }
 
-// filter — keep elements where fn returns true
 func builtinFilter(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 2 {
 		runtimeError("filter() requires 2 arguments (list, fn)")
@@ -450,7 +422,6 @@ func builtinFilter(args []*parser.Expr, env *Environment) object.Object {
 	return &object.ListObj{Elements: results}
 }
 
-// reduce — fold a list with an accumulator
 func builtinReduce(args []*parser.Expr, env *Environment) object.Object {
 	if len(args) != 3 {
 		runtimeError("reduce() requires 3 arguments (list, fn, initial)")

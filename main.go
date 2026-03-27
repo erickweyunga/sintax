@@ -35,12 +35,10 @@ func main() {
 	case "help", "--help", "-h":
 		printHelp()
 	default:
-		// Default: compile and run
 		runCommand()
 	}
 }
 
-// runCommand compiles and runs a .sx file (with caching).
 func runCommand() {
 	filename := os.Args[1]
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
@@ -50,7 +48,6 @@ func runCommand() {
 	compileAndRun(filename)
 }
 
-// evalCommand runs a file through the Go interpreter (dev/debug only).
 func evalCommand() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: sintax eval <file.sx>\n")

@@ -8,14 +8,12 @@ import (
 	"github.com/erickweyunga/sintax/parser"
 )
 
-// SourceInfo holds original source context for error reporting.
 type SourceInfo struct {
 	Filename string
 	Lines    []string
 	LineMap  []int
 }
 
-// RuntimeError is a recoverable error with source location.
 type RuntimeError struct {
 	Message string
 	Line    int
@@ -49,7 +47,6 @@ func runtimeError(format string, args ...interface{}) {
 	panic(re)
 }
 
-// SetSourceInfo sets the source context for error reporting.
 func SetSourceInfo(info *SourceInfo) {
 	sourceInfo = info
 }
@@ -64,7 +61,6 @@ func recoverError(err *error) {
 	}
 }
 
-// Eval evaluates a program and returns any runtime error.
 func Eval(program *parser.Program) (err error) {
 	defer recoverError(&err)
 	env := NewEnvironment()
@@ -72,27 +68,21 @@ func Eval(program *parser.Program) (err error) {
 	return nil
 }
 
-// EvalWithEnv evaluates a program in an existing environment (used by REPL).
 func EvalWithEnv(program *parser.Program, env *Environment) (result object.Object, err error) {
 	defer recoverError(&err)
 	result = evalStatements(program.Statements, env)
 	return result, nil
 }
 
-// EvalDefinitionsOnly executes only function definitions and assignments.
-// Used by the test runner to set up functions without side effects.
 func EvalDefinitionsOnly(program *parser.Program, env *Environment) {
 	for _, stmt := range program.Statements {
 		switch {
 		case stmt.FuncDef != nil:
 			evalFuncDef(stmt.FuncDef, env)
 		case stmt.Assignment != nil:
-			// Only evaluate if the value is a simple literal or function call
-			// Skip if it would cause side effects
 			evalAssignment(stmt.Assignment, env)
 		case stmt.TypedAssign != nil:
 			evalTypedAssign(stmt.TypedAssign, env)
-		// Skip: PrintStmt, ExprStmt, IfStmt, WhileStmt, ForStmt, etc.
 		}
 	}
 }

@@ -5,14 +5,11 @@ import (
 	"strings"
 )
 
-// Import represents a use directive.
 type Import struct {
 	Module   string // e.g. "math"
 	Function string // e.g. "sqrt" or ""
 }
 
-// RewriteLine rewrites namespace calls in a line using the given imports.
-// This is used by the test runner to rewrite test expressions.
 func RewriteLine(line string, imports []Import) string {
 	for _, imp := range imports {
 		if imp.Function == "" {
@@ -29,17 +26,14 @@ func RewriteLine(line string, imports []Import) string {
 	return line
 }
 
-// Result holds the preprocessed source and a line mapping back to the original.
 type Result struct {
 	Source  string
-	LineMap []int // preprocessed line number (1-based index) → original line number
+	LineMap []int
 	Imports []Import
 }
 
 // Process converts indentation-based Sintax source into brace-delimited form.
-// Returns the processed source with newlines preserved for line tracking.
 func Process(source string) Result {
-	// Collapse multi-line backtick strings into single lines
 	source = collapseBacktickStrings(source)
 	lines := strings.Split(source, "\n")
 	indentStack := []int{0}
@@ -51,9 +45,7 @@ func Process(source string) Result {
 	var imports []Import
 
 	for origLine, line := range lines {
-		origLineNum := origLine + 1 // 1-based
-
-		// Handle multiline comments --{ ... }--
+		origLineNum := origLine + 1
 		trimmed := strings.TrimSpace(line)
 		if !inBlockComment && strings.HasPrefix(trimmed, "--{") {
 			inBlockComment = true
@@ -68,15 +60,12 @@ func Process(source string) Result {
 
 		line = stripComment(line)
 
-		// Rewrite namespace calls: math/sqrt( → math__sqrt(
 		for _, imp := range imports {
 			if imp.Function == "" {
 				modName := imp.Module
-				// std/math → math (strip std/ prefix)
 				if strings.HasPrefix(modName, "std/") {
 					modName = strings.TrimPrefix(modName, "std/")
 				}
-				// myfile.sx → myfile (strip .sx extension)
 				if strings.HasSuffix(modName, ".sx") {
 					modName = strings.TrimSuffix(filepath.Base(modName), ".sx")
 				}
@@ -90,7 +79,6 @@ func Process(source string) Result {
 			continue
 		}
 
-		// Handle use imports
 		if strings.HasPrefix(trimmed, "use ") {
 			imp := parseUse(trimmed)
 			if imp != nil {
@@ -103,19 +91,16 @@ func Process(source string) Result {
 		indent := countIndent(line)
 		stripped := strings.TrimSpace(line)
 
-		// Close blocks on dedent
 		for len(indentStack) > 1 && indent < indentStack[len(indentStack)-1] {
 			indentStack = indentStack[:len(indentStack)-1]
 			resultLines = append(resultLines, "}")
 			lineMap = append(lineMap, origLineNum)
 		}
 
-		// Track new indent level
 		if indent > indentStack[len(indentStack)-1] {
 			indentStack = append(indentStack, indent)
 		}
 
-		// Handle block-opening lines (ending with ":")
 		if strings.HasSuffix(stripped, ":") {
 			resultLines = append(resultLines, stripped[:len(stripped)-1]+" {")
 			lineMap = append(lineMap, origLineNum)
@@ -125,7 +110,6 @@ func Process(source string) Result {
 		}
 	}
 
-	// Close remaining open blocks
 	for len(indentStack) > 1 {
 		indentStack = indentStack[:len(indentStack)-1]
 		resultLines = append(resultLines, "}")
@@ -139,10 +123,6 @@ func Process(source string) Result {
 	}
 }
 
-// parseUse parses a use directive.
-// use "math"       → Module: "math", Function: ""
-// use "math/sqrt"  → Module: "math", Function: "sqrt"
-// rewriteNamespaceCalls replaces module/func( with module__func( in a line.
 func rewriteNamespaceCalls(line, module string) string {
 	prefix := module + "/"
 	for {
@@ -150,23 +130,18 @@ func rewriteNamespaceCalls(line, module string) string {
 		if idx == -1 {
 			break
 		}
-		// Replace the / with __
 		line = line[:idx] + module + "__" + line[idx+len(prefix):]
 	}
 	return line
 }
 
 func parseUse(line string) *Import {
-	// Extract the quoted string
 	start := strings.Index(line, "\"")
 	end := strings.LastIndex(line, "\"")
 	if start == -1 || end <= start {
 		return nil
 	}
 	path := line[start+1 : end]
-
-	// Handle std/ prefix: use "std/math" → Module: "std/math"
-	// Handle std/math/sqrt → Module: "std/math", Function: "sqrt"
 	if strings.HasPrefix(path, "std/") {
 		rest := strings.TrimPrefix(path, "std/")
 		if idx := strings.Index(rest, "/"); idx != -1 {
@@ -178,7 +153,6 @@ func parseUse(line string) *Import {
 		return &Import{Module: path}
 	}
 
-	// User modules: use "file.sx/func"
 	if idx := strings.Index(path, "/"); idx != -1 {
 		return &Import{
 			Module:   path[:idx],
@@ -188,8 +162,6 @@ func parseUse(line string) *Import {
 	return &Import{Module: path}
 }
 
-// collapseBacktickStrings replaces newlines inside backtick strings with \n
-// so the preprocessor doesn't add semicolons inside them.
 func collapseBacktickStrings(source string) string {
 	var result strings.Builder
 	i := 0
@@ -230,7 +202,6 @@ func stripComment(line string) string {
 	return line
 }
 
-// ProcessEscapes handles escape sequences in strings: \n, \t, \\, \"
 func ProcessEscapes(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))

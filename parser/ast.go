@@ -2,12 +2,10 @@ package parser
 
 import "github.com/alecthomas/participle/v2/lexer"
 
-// Program is the top-level AST node.
 type Program struct {
 	Statements []*Statement `@@*`
 }
 
-// Statement represents a single statement in the language.
 type Statement struct {
 	Pos         lexer.Position
 	FuncDef     *FuncDef     `( @@`
@@ -16,17 +14,15 @@ type Statement struct {
 	SwitchStmt  *SwitchStmt  `| @@`
 	WhileStmt   *WhileStmt   `| @@`
 	ForStmt     *ForStmt     `| @@`
-	PrintStmt    *PrintStmt    `| @@`
-	ReturnStmt   *ReturnStmt  `| @@`
-	TypedAssign  *TypedAssign `| @@`
+	PrintStmt      *PrintStmt      `| @@`
+	ReturnStmt     *ReturnStmt     `| @@`
+	TypedAssign    *TypedAssign    `| @@`
 	IndexAssign    *IndexAssign    `| @@`
 	CompoundAssign *CompoundAssign `| @@`
 	Assignment     *Assignment     `| @@`
 	ExprStmt    *ExprStmt    `| @@ )`
 }
 
-// FuncDef defines a function: [pub] fn (params) [returnTypes] name: body
-// Return types can be a single type, void, or a union: str | num
 type FuncDef struct {
 	Pub        bool     `@"pub"?`
 	Params     []*Param `"fn" "(" ( @@ ( "," @@ )* )? ")"`
@@ -36,10 +32,6 @@ type FuncDef struct {
 	Body       *Block   `@@`
 }
 
-// Param is a function parameter with required type and optional default value.
-// Typed with default: num x = 5
-// Typed: num x
-// Untyped: x (legacy, analyzer will warn)
 type Param struct {
 	Type       *string  `( @( "num" | "str" | "bool" | "list" | "dict" )`
 	TypedName  *string  `  @Ident`
@@ -49,7 +41,6 @@ type Param struct {
 	Name       string   `| @Ident )`
 }
 
-// GetName returns the parameter name regardless of which branch parsed it.
 func (p *Param) GetName() string {
 	if p.TypedName != nil {
 		return *p.TypedName
@@ -57,12 +48,10 @@ func (p *Param) GetName() string {
 	return p.Name
 }
 
-// HasDefault returns true if the parameter has a default value.
 func (p *Param) HasDefault() bool {
 	return p.DefaultNum != nil || p.DefaultStr != nil || p.DefaultBool != nil
 }
 
-// ReturnTypes returns the full list of return types for a FuncDef.
 func (fd *FuncDef) ReturnTypes() []string {
 	if fd.ReturnType == nil {
 		return nil
@@ -72,44 +61,35 @@ func (fd *FuncDef) ReturnTypes() []string {
 	return types
 }
 
-// IsVoid returns true if the function is declared void.
 func (fd *FuncDef) IsVoid() bool {
 	return fd.ReturnType != nil && *fd.ReturnType == "void"
 }
 
-// Block is a brace-delimited group of statements.
 type Block struct {
 	Statements []*Statement `"{" @@* "}"`
 }
 
-// IfStmt: if condition: body else: else
 type IfStmt struct {
 	Condition *Expr  `"if" @@`
 	Body      *Block `@@`
 	Else      *Block `( "else" @@ )?`
 }
 
-// CatchStmt: catch name = expr: body
-// Evaluates expr, assigns to name. If the value is an error, runs body.
 type CatchStmt struct {
 	Name  string `"catch" @Ident "="`
 	Value *Expr  `@@`
 	Body  *Block `@@`
 }
 
-// PrintStmt: >> expr;
 type PrintStmt struct {
 	Value *Expr `">>" @@ ";"`
 }
 
-// WhileStmt: while condition: body
 type WhileStmt struct {
 	Condition *Expr  `"while" @@`
 	Body      *Block `@@`
 }
 
-// ForStmt: for var in iterable: body
-// or:      for idx, var in iterable: body
 type ForStmt struct {
 	Var      string  `"for" @Ident`
 	ValueVar *string `( "," @Ident )?`
@@ -117,25 +97,21 @@ type ForStmt struct {
 	Body     *Block  `@@`
 }
 
-// SwitchStmt: match expr { case val: body ... _: body }
 type SwitchStmt struct {
 	Value   *Expr         `"match" @@`
 	Cases   []*CaseClause `"{" @@*`
 	Default *Block        `( "_" @@ )? "}"`
 }
 
-// CaseClause: case value: body
 type CaseClause struct {
 	Value *Expr  `"case" @@`
 	Body  *Block `@@`
 }
 
-// ReturnStmt: return expr;
 type ReturnStmt struct {
 	Value *Expr `"return" @@ ";"`
 }
 
-// TypedAssign: [const] type name = value; (e.g. num x = 5; const num PI = 3.14;)
 type TypedAssign struct {
 	Const bool   `@"const"?`
 	Type  string `@( "num" | "str" | "bool" | "list" | "dict" )`
@@ -143,33 +119,26 @@ type TypedAssign struct {
 	Value *Expr  `@@ ";"`
 }
 
-// IndexAssign: name[index] = value; or name[i][j] = value;
 type IndexAssign struct {
 	Name    string      `@Ident`
 	Indices []*IndexOp  `@@+ "="`
 	Value   *Expr       `@@ ";"`
 }
 
-// CompoundAssign: name += value; name -= value; etc.
 type CompoundAssign struct {
 	Name string `@Ident`
 	Op   string `@( "+=" | "-=" | "*=" | "/=" )`
 	Value *Expr `@@ ";"`
 }
 
-// Assignment: name = value;
 type Assignment struct {
 	Name  string `@Ident "="`
 	Value *Expr  `@@ ";"`
 }
 
-// ExprStmt is an expression used as a statement.
 type ExprStmt struct {
 	Expr *Expr `@@ ";"`
 }
-
-// Expression hierarchy for operator precedence.
-// Precedence (low → high): or → and → comparison → addition → multiplication → unary(not) → primary
 
 type Expr struct {
 	Left *LogicalAnd `@@`
@@ -222,8 +191,6 @@ type Unary struct {
 	Primary *Primary `| @@ )`
 }
 
-// Primary is the base expression. After parsing the base value,
-// a chain of suffix operations (indexing and method calls) is applied.
 type Primary struct {
 	Lambda   *Lambda    `( @@`
 	FuncCall *FuncCall  `| @@`
@@ -236,52 +203,43 @@ type Primary struct {
 	Suffix   []*Suffix  `@@*`
 }
 
-// Suffix is a postfix operation: either [index] or .method(args).
 type Suffix struct {
 	Index  *IndexOp    `( @@`
 	Method *MethodCall `| @@ )`
 }
 
-// IndexOp: [expr]
 type IndexOp struct {
 	Index *Expr `"[" @@ "]"`
 }
 
-// Lambda: fn(params) -> expr
 type Lambda struct {
 	Params []string `"fn" "(" ( @Ident ( "," @Ident )* )? ")" "->"`
 	Body   *Expr    `@@`
 }
 
-// MethodCall: .name(args)
 type MethodCall struct {
 	Name string  `"." @Ident "("`
 	Args []*Expr `( @@ ( "," @@ )* )? ")"`
 }
 
-// FuncCall: name(args)
 type FuncCall struct {
 	Name string  `@Ident "("`
 	Args []*Expr `( @@ ( "," @@ )* )? ")"`
 }
 
-// DictLit: {"key": value, ...}
 type DictLit struct {
 	Entries []*DictEntry `"{" ( @@ ( "," @@ )* )? "}"`
 }
 
-// DictEntry: key: value
 type DictEntry struct {
 	Key   *Expr `@@ ":"`
 	Value *Expr `@@`
 }
 
-// ListLit: [elem, elem, ...]
 type ListLit struct {
 	Elements []*Expr `"[" ( @@ ( "," @@ )* )? "]"`
 }
 
-// IsBareLiteral checks if an expression is just a bare number literal (e.g. 0 or 1).
 func (e *Expr) IsBareLiteral(val float64) bool {
 	if e.Left == nil || len(e.Ops) > 0 {
 		return false

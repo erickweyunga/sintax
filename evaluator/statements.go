@@ -162,8 +162,6 @@ func evalForStmt(fs *parser.ForStmt, env *Environment) object.Object {
 		runtimeError("'for' requires a list, dict, or str")
 	}
 
-	// Two-variable form: for i, val in list:
-	// Var = index, ValueVar = value
 	hasIndex := fs.ValueVar != nil
 
 	var result object.Object = object.Null
@@ -204,17 +202,12 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 	if !ok {
 		runtimeError("Undefined name: '%s'", ia.Name)
 	}
-
 	val := evalExpr(ia.Value, env)
-
-	// Navigate through all indices except the last
 	target := obj
 	for i := 0; i < len(ia.Indices)-1; i++ {
 		idx := evalExpr(ia.Indices[i].Index, env)
 		target = evalIndexOn(target, idx)
 	}
-
-	// Set at the last index
 	lastIdx := evalExpr(ia.Indices[len(ia.Indices)-1].Index, env)
 	switch o := target.(type) {
 	case *object.DictObj:

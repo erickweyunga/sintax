@@ -11,18 +11,16 @@ import (
 	"github.com/erickweyunga/sintax/parser"
 )
 
-// SxValue* is an opaque pointer in LLVM IR — we represent it as i8*
 var sxValuePtr = types.I8Ptr
 var i32 = types.I32
 var i64 = types.I64
 var voidType = types.Void
 
-// CodeGen generates LLVM IR from a Sintax AST.
 type CodeGen struct {
 	mod    *ir.Module
 	block  *ir.Block
 	fn     *ir.Func
-	vars   map[string]llvmValue.Value // name → pointer to SxValue* (alloca or heap cell)
+	vars   map[string]llvmValue.Value
 	scopes []map[string]llvmValue.Value
 
 	rtFuncs      map[string]*ir.Func
@@ -37,7 +35,6 @@ type CodeGen struct {
 	lambdaCounter      int
 }
 
-// New creates a new code generator.
 func New() *CodeGen {
 	cg := &CodeGen{
 		mod:          ir.NewModule(),
@@ -52,23 +49,18 @@ func New() *CodeGen {
 	return cg
 }
 
-// Generate compiles a program to LLVM IR.
 func (cg *CodeGen) Generate(program *parser.Program) string {
-	// Pass 1: Forward-declare top-level functions so mutual recursion works
 	for _, stmt := range program.Statements {
 		if stmt.FuncDef != nil {
 			cg.forwardDeclare(stmt.FuncDef)
 		}
 	}
 
-	// Pass 2: Compile everything
 	mainFn := cg.mod.NewFunc("main", i32)
 	entry := mainFn.NewBlock("entry")
 	cg.fn = mainFn
 	cg.block = entry
 	cg.pushScope()
-
-	// Initialize garbage collector
 	cg.callRTVoid("sx_gc_init")
 
 	for _, stmt := range program.Statements {
@@ -82,9 +74,6 @@ func (cg *CodeGen) Generate(program *parser.Program) string {
 	return cg.mod.String()
 }
 
-// CompileModule compiles an imported module's function definitions.
-// The prefix is prepended to function names (e.g. "math" → "math__sqrt").
-// For specific function imports, functions are also registered without prefix.
 func (cg *CodeGen) CompileModule(program *parser.Program, prefix string, specificFunc string) {
 	for _, stmt := range program.Statements {
 		if stmt.FuncDef != nil {
@@ -108,15 +97,12 @@ func (cg *CodeGen) CompileModule(program *parser.Program, prefix string, specifi
 	}
 }
 
-// --- Runtime declarations (table-driven) ---
-
 type rtDecl struct {
 	name   string
 	ret    types.Type
 	params []types.Type
 }
 
-// V = SxValue*, D = double, I = i32, void = void
 var runtimeDecls = []rtDecl{
 	// Constructors
 	{"sx_number", sxValuePtr, []types.Type{types.Double}},
@@ -248,8 +234,6 @@ func (cg *CodeGen) declareRuntime() {
 	}
 }
 
-// --- Scope ---
-
 func (cg *CodeGen) pushScope() {
 	cg.scopes = append(cg.scopes, make(map[string]llvmValue.Value))
 }
@@ -264,7 +248,6 @@ func (cg *CodeGen) setVar(name string, val llvmValue.Value) {
 		cg.block.NewStore(val, ptr)
 		return
 	}
-	// New variable — allocate on the stack
 	alloca := cg.block.NewAlloca(sxValuePtr)
 	alloca.SetName(name + ".ptr")
 	cg.block.NewStore(val, alloca)
@@ -274,8 +257,6 @@ func (cg *CodeGen) setVar(name string, val llvmValue.Value) {
 	cg.vars[name] = alloca
 }
 
-// setVarPtr overrides a variable's storage location to point at an
-// existing pointer (alloca or heap cell). Used for closure-captured variables.
 func (cg *CodeGen) setVarPtr(name string, ptr llvmValue.Value) {
 	if len(cg.scopes) > 0 {
 		cg.scopes[len(cg.scopes)-1][name] = ptr
@@ -303,8 +284,6 @@ func (cg *CodeGen) resolveVar(name string) (llvmValue.Value, bool) {
 	return nil, false
 }
 
-// --- String constants ---
-
 func (cg *CodeGen) globalString(s string) llvmValue.Value {
 	if g, ok := cg.strConstants[s]; ok {
 		zero := constant.NewInt(i64, 0)
@@ -327,8 +306,6 @@ func (cg *CodeGen) globalString(s string) llvmValue.Value {
 		g, zero, zero,
 	)
 }
-
-// --- Helpers ---
 
 func (cg *CodeGen) callRT(name string, args ...llvmValue.Value) llvmValue.Value {
 	return cg.block.NewCall(cg.rtFuncs[name], args...)

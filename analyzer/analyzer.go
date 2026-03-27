@@ -10,7 +10,6 @@ import (
 	"github.com/erickweyunga/sintax/preprocessor"
 )
 
-// Error represents an analysis error with source context.
 type Error struct {
 	Level   string // "error" or "warning"
 	Message string
@@ -19,7 +18,6 @@ type Error struct {
 	Source  string // the original source line
 }
 
-// Format returns a Rust-style formatted error string.
 func (e Error) Format() string {
 	var b strings.Builder
 	if e.Level == "warning" {
@@ -36,7 +34,6 @@ func (e Error) Format() string {
 	return b.String()
 }
 
-// FuncInfo holds what we know about a function at analysis time.
 type FuncInfo struct {
 	Name       string
 	Arity      int
@@ -51,7 +48,6 @@ type FuncInfo struct {
 	Pub        bool
 }
 
-// VarInfo holds what we know about a variable at analysis time.
 type VarInfo struct {
 	Type    string // "" = dynamic
 	Defined bool
@@ -61,7 +57,6 @@ type VarInfo struct {
 	Name    string
 }
 
-// ImportInfo tracks whether an import was used.
 type ImportInfo struct {
 	Module   string
 	Function string
@@ -69,7 +64,6 @@ type ImportInfo struct {
 	Line     int
 }
 
-// StdlibSig holds a stdlib function's type signature.
 type StdlibSig struct {
 	ParamTypes []string // e.g. ["num"] or ["str", "str"]
 	ReturnType string   // e.g. "num", "str", "list", "bool", ""
@@ -77,39 +71,30 @@ type StdlibSig struct {
 	Pub        bool
 }
 
-// Analyzer validates a Sintax AST before execution or compilation.
 type Analyzer struct {
 	scopes    []map[string]*VarInfo
 	functions map[string]*FuncInfo
 	imports   []preprocessor.Import
 
-	// imported function names (stdlib or user modules)
 	importedFuncs   map[string]*ImportInfo
 	importedModules map[string]bool
 	usedModules     map[string]bool
 
-	// source info for error messages
 	file    string
 	lines   []string
 	lineMap []int
 
 	errors             []Error
-	inLoop             int      // nesting depth of loops
-	inFunc             bool     // inside a function body?
-	currentFuncName    string   // name of the function being checked
-	currentReturnTypes []string // declared return types of current function
+	inLoop             int
+	inFunc             bool
+	currentFuncName    string
+	currentReturnTypes []string
 
-	// Known stdlib module names (discovered from filesystem)
-	stdlibModules map[string]bool
-
-	// Stdlib function signatures: "math__sqrt" → {ParamTypes: ["num"], ReturnType: "num"}
-	stdlibSigs map[string]*StdlibSig
-
-	// Track string concat in loops: variable name → true if s += "..." seen in loop
+	stdlibModules    map[string]bool
+	stdlibSigs       map[string]*StdlibSig
 	loopStringConcat map[string]bool
 }
 
-// New creates a new analyzer.
 func New(file string, lines []string, lineMap []int) *Analyzer {
 	return &Analyzer{
 		scopes:          []map[string]*VarInfo{},
@@ -124,7 +109,6 @@ func New(file string, lines []string, lineMap []int) *Analyzer {
 	}
 }
 
-// Analyze runs all checks on a program and returns any errors found.
 func Analyze(
 	program *parser.Program,
 	imports []preprocessor.Import,
@@ -141,8 +125,6 @@ func Analyze(
 	a.registerImports()
 	a.registerBuiltins()
 	a.analyze(program)
-
-	// Post-analysis checks
 	a.checkUnusedFuncs()
 	a.checkUnusedImports()
 
@@ -151,15 +133,11 @@ func Analyze(
 
 func (a *Analyzer) analyze(program *parser.Program) {
 	a.pushScope()
-
-	// Pass 1: register all top-level function definitions (enables forward calls)
 	for _, stmt := range program.Statements {
 		if stmt.FuncDef != nil {
 			a.registerFunc(stmt.FuncDef)
 		}
 	}
-
-	// Pass 2: check all statements
 	for i, stmt := range program.Statements {
 		a.checkStatement(stmt)
 
@@ -180,8 +158,6 @@ func (a *Analyzer) analyze(program *parser.Program) {
 	a.popScope()
 }
 
-// markTestReferences scans source lines for -- test: comments and marks
-// any function names found in them as used.
 func (a *Analyzer) markTestReferences() {
 	for _, line := range a.lines {
 		trimmed := strings.TrimSpace(line)
@@ -194,8 +170,6 @@ func (a *Analyzer) markTestReferences() {
 	}
 }
 
-// markFuncNamesInString finds function call patterns (name followed by '(')
-// in a string and marks those functions as used.
 func (a *Analyzer) markFuncNamesInString(s string) {
 	i := 0
 	for i < len(s) {
@@ -210,7 +184,6 @@ func (a *Analyzer) markFuncNamesInString(s string) {
 				if f, ok := a.functions[name]; ok {
 					f.Used = true
 				}
-				// Mark namespaced module calls: math__sqrt → mark std/math as used
 				if strings.Contains(name, "__") {
 					parts := strings.SplitN(name, "__", 2)
 					a.usedModules["std/"+parts[0]] = true
@@ -234,10 +207,7 @@ func (a *Analyzer) markTestVar(name string) {
 	}
 }
 
-// markInterpolationRefs finds {varName} patterns in string literals
-// and marks those variables as used.
 func (a *Analyzer) markInterpolationRefs(s string) {
-	// Strip surrounding quotes
 	if len(s) >= 2 {
 		s = s[1 : len(s)-1]
 	}
@@ -266,8 +236,6 @@ func isIdentStart(b byte) bool {
 func isIdentCont(b byte) bool {
 	return isIdentStart(b) || (b >= '0' && b <= '9')
 }
-
-// --- Error helpers ---
 
 func (a *Analyzer) addError(line int, format string, args ...interface{}) {
 	origLine := a.originalLine(line)
@@ -305,8 +273,6 @@ func (a *Analyzer) sourceLine(origLine int) string {
 	return ""
 }
 
-// --- Scope management ---
-
 func (a *Analyzer) pushScope() {
 	a.scopes = append(a.scopes, make(map[string]*VarInfo))
 }
@@ -342,19 +308,16 @@ func (a *Analyzer) isDefined(name string) bool {
 }
 
 func (a *Analyzer) markUsed(name string) {
-	// Mark variable as used
 	for i := len(a.scopes) - 1; i >= 0; i-- {
 		if v, ok := a.scopes[i][name]; ok {
 			v.Used = true
 			return
 		}
 	}
-	// Mark function as used
 	if f, ok := a.functions[name]; ok {
 		f.Used = true
 		return
 	}
-	// Mark imported function as used
 	if imp, ok := a.importedFuncs[name]; ok {
 		imp.Used = true
 	}
@@ -369,10 +332,6 @@ func (a *Analyzer) getVarType(name string) string {
 	return ""
 }
 
-// --- Registration ---
-
-// loadStdlibDir scans the stdlib directory, parses each .sx file,
-// and extracts function signatures for type checking.
 func (a *Analyzer) loadStdlibDir(dir string) {
 	if dir == "" {
 		return
@@ -414,8 +373,7 @@ func (a *Analyzer) loadStdlibDir(dir string) {
 			if fd.ReturnType != nil {
 				sig.ReturnType = *fd.ReturnType
 			}
-			// Register as both "math__sqrt" and "sqrt"
-			a.stdlibSigs[modName+"__"+fd.Name] = sig
+				a.stdlibSigs[modName+"__"+fd.Name] = sig
 			a.stdlibSigs[fd.Name] = sig
 		}
 	}
@@ -453,7 +411,6 @@ func (a *Analyzer) registerFunc(fd *parser.FuncDef) {
 	}
 }
 
-
 func (a *Analyzer) registerBuiltins() {
 	builtins := map[string]int{
 		"print":  -1,
@@ -485,9 +442,7 @@ func (a *Analyzer) registerBuiltins() {
 		}
 	}
 
-	// Native bridge functions callable from stdlib .sx files and directly.
 	natives := map[string]int{
-		// Math
 		"__native_sqrt": 1, "__native_sin": 1, "__native_cos": 1,
 		"__native_tan": 1, "__native_asin": 1, "__native_acos": 1,
 		"__native_atan": 1, "__native_log": 1, "__native_log2": 1,
@@ -561,13 +516,10 @@ func (a *Analyzer) registerImports() {
 	}
 }
 
-// --- Post-analysis checks ---
-
 func (a *Analyzer) checkUnusedVars() {
 	if len(a.scopes) == 0 {
 		return
 	}
-	// Check top-level scope
 	for _, v := range a.scopes[0] {
 		if !v.Used && v.Line > 0 && v.Type != "fn" {
 			a.addWarning(v.Line, "Variable '%s' is defined but never used", v.Name)
@@ -598,8 +550,6 @@ func (a *Analyzer) checkUnusedImports() {
 		a.addWarning(0, "Imported module '%s' is never used", mod)
 	}
 }
-
-// --- Statement checks ---
 
 func (a *Analyzer) checkStatement(stmt *parser.Statement) {
 	line := stmt.Pos.Line
@@ -635,13 +585,11 @@ func (a *Analyzer) checkStatement(stmt *parser.Statement) {
 }
 
 func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
-	// Enforce return type declaration
 	retTypes := fd.ReturnTypes()
 	if len(retTypes) == 0 {
 		a.addError(line, "Function '%s' must have a return type (use 'void' if it returns nothing)", fd.Name)
 	}
 
-	// Check for duplicate parameter names
 	seen := make(map[string]bool)
 	for _, p := range fd.Params {
 		if seen[p.GetName()] {
@@ -650,22 +598,17 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 		seen[p.GetName()] = true
 	}
 
-	// Enforce typed parameters
 	for _, p := range fd.Params {
 		if p.Type == nil {
 			a.addError(line, "Parameter '%s' in function '%s' must have a type", p.GetName(), fd.Name)
 		}
 	}
 
-	// Update function info with line
 	if f, ok := a.functions[fd.Name]; ok {
 		f.Line = line
 	}
 
-	// Define the function name in current scope
 	a.define(fd.Name, "fn", line)
-
-	// Check body in a new scope
 	prevInFunc := a.inFunc
 	prevFuncName := a.currentFuncName
 	prevReturnTypes := a.currentReturnTypes
@@ -674,7 +617,6 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 	a.currentReturnTypes = retTypes
 	a.pushScope()
 
-	// Define parameters in the function scope
 	for _, p := range fd.Params {
 		typ := ""
 		if p.Type != nil {
@@ -685,21 +627,18 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 		a.scopes[len(a.scopes)-1][pName].Used = true
 	}
 
-	// Register nested function defs (forward declaration within function body)
 	for _, stmt := range fd.Body.Statements {
 		if stmt.FuncDef != nil {
 			a.registerFunc(stmt.FuncDef)
 		}
 	}
 
-	// Check for empty function body
 	if len(fd.Body.Statements) == 0 {
 		a.addWarning(line, "Function '%s' has an empty body", fd.Name)
 	}
 
 	a.checkStatementsWithReachability(fd.Body.Statements)
 
-	// Check unused variables in function scope
 	for _, v := range a.scopes[len(a.scopes)-1] {
 		if !v.Used && v.Type != "fn" {
 			a.addWarning(v.Line, "Variable '%s' is defined but never used in function '%s'", v.Name, fd.Name)
@@ -712,12 +651,9 @@ func (a *Analyzer) checkFuncDef(fd *parser.FuncDef, line int) {
 	a.currentReturnTypes = prevReturnTypes
 }
 
-// checkStatementsWithReachability checks statements and detects unreachable code.
 func (a *Analyzer) checkStatementsWithReachability(stmts []*parser.Statement) {
 	for i, stmt := range stmts {
 		a.checkStatement(stmt)
-
-		// Detect unreachable code after return/break/continue
 		isTerminator := false
 		switch {
 		case stmt.ReturnStmt != nil:
@@ -750,8 +686,6 @@ func terminatorName(stmt *parser.Statement) string {
 
 func (a *Analyzer) checkIfStmt(ifStmt *parser.IfStmt, line int) {
 	a.checkExpr(ifStmt.Condition, line)
-
-	// Warn on constant condition
 	if isConstTrue(ifStmt.Condition) {
 		a.addWarning(line, "Condition is always true")
 	} else if isConstFalse(ifStmt.Condition) {
@@ -771,8 +705,6 @@ func (a *Analyzer) checkIfStmt(ifStmt *parser.IfStmt, line int) {
 func (a *Analyzer) checkCatchStmt(cs *parser.CatchStmt, line int) {
 	a.checkExpr(cs.Value, line)
 	a.define(cs.Name, "", line)
-	// Mark catch variable as used — it is implicitly consumed by the error check,
-	// similar to how for-loop variables are marked used.
 	for i := len(a.scopes) - 1; i >= 0; i-- {
 		if v, ok := a.scopes[i][cs.Name]; ok {
 			v.Used = true
@@ -787,8 +719,6 @@ func (a *Analyzer) checkCatchStmt(cs *parser.CatchStmt, line int) {
 
 func (a *Analyzer) checkSwitchStmt(sw *parser.SwitchStmt, line int) {
 	a.checkExpr(sw.Value, line)
-
-	// Check for duplicate case values
 	seenCases := make(map[string]bool)
 	for _, c := range sw.Cases {
 		a.checkExpr(c.Value, line)
@@ -812,8 +742,6 @@ func (a *Analyzer) checkSwitchStmt(sw *parser.SwitchStmt, line int) {
 
 func (a *Analyzer) checkWhileStmt(ws *parser.WhileStmt, line int) {
 	a.checkExpr(ws.Condition, line)
-
-	// Detect infinite loops: while true: with no break
 	if isConstTrue(ws.Condition) && !blockHasBreak(ws.Body) {
 		a.addWarning(line, "Infinite loop: 'while true' without break")
 	}
@@ -836,8 +764,8 @@ func (a *Analyzer) checkForStmt(fs *parser.ForStmt, line int) {
 
 	a.inLoop++
 	if fs.ValueVar != nil {
-		// Two-variable form: for i, val in list:
-		a.define(fs.Var, "num", line) // index is always num
+		a.define(fs.Var, "num", line)
+
 		a.define(*fs.ValueVar, "", line)
 		for i := len(a.scopes) - 1; i >= 0; i-- {
 			if v, ok := a.scopes[i][fs.Var]; ok {
@@ -876,7 +804,6 @@ func (a *Analyzer) checkReturnStmt(ret *parser.ReturnStmt, line int) {
 	}
 	a.checkExpr(ret.Value, line)
 
-	// Check return type matches declared types
 	if len(a.currentReturnTypes) > 0 && a.currentReturnTypes[0] != "void" {
 		if valType := a.inferExprType(ret.Value); valType != "" {
 			if !a.typeMatchesUnion(valType, a.currentReturnTypes) {
@@ -926,7 +853,6 @@ func (a *Analyzer) checkCompoundAssign(ca *parser.CompoundAssign, line int) {
 	}
 	a.checkExpr(ca.Value, line)
 
-	// Detect string concatenation in loops: s += "..."
 	if a.inLoop > 0 && ca.Op == "+=" {
 		varType := a.getVarType(ca.Name)
 		valType := a.inferExprType(ca.Value)
@@ -942,7 +868,6 @@ func (a *Analyzer) checkCompoundAssign(ca *parser.CompoundAssign, line int) {
 func (a *Analyzer) checkAssignment(assign *parser.Assignment, line int) {
 	a.checkExpr(assign.Value, line)
 
-	// Check const reassignment
 	if v := a.findVar(assign.Name); v != nil && v.Const {
 		a.addError(line, "Cannot reassign const '%s'", assign.Name)
 		return
@@ -961,7 +886,6 @@ func (a *Analyzer) checkAssignment(assign *parser.Assignment, line int) {
 	}
 }
 
-// typeMatchesUnion checks if a type matches any type in a union list.
 func (a *Analyzer) typeMatchesUnion(valType string, types []string) bool {
 	for _, t := range types {
 		if valType == t {
@@ -996,8 +920,6 @@ func (a *Analyzer) checkBlock(block *parser.Block) {
 	a.checkStatementsWithReachability(block.Statements)
 }
 
-// checkBlockForLoopPatterns checks a block that is a loop body,
-// detecting loop-specific issues.
 func (a *Analyzer) checkBlockForLoopPatterns(block *parser.Block) {
 	for _, stmt := range block.Statements {
 		if stmt.FuncDef != nil {
@@ -1006,8 +928,6 @@ func (a *Analyzer) checkBlockForLoopPatterns(block *parser.Block) {
 	}
 	a.checkStatementsWithReachability(block.Statements)
 }
-
-// --- Expression checks ---
 
 func (a *Analyzer) checkExpr(expr *parser.Expr, line int) {
 	if expr == nil {
@@ -1038,7 +958,6 @@ func (a *Analyzer) checkComparison(cmp *parser.Comparison, line int) {
 		a.checkAddition(cmp.Right, line)
 	}
 
-	// Self-comparison: x == x is always true, x != x is always false
 	if cmp.Op == "==" || cmp.Op == "!=" {
 		if leftName := additionIdentName(cmp.Left); leftName != "" {
 			if rightName := additionIdentName(cmp.Right); rightName == leftName {
@@ -1070,7 +989,6 @@ func (a *Analyzer) checkMultiplication(mul *parser.Multiplication, line int) {
 	for _, op := range mul.Ops {
 		a.checkUnary(op.Right, line)
 
-		// Division by zero: x / 0 or x % 0
 		if op.Op == "/" || op.Op == "%" {
 			if isLiteralZero(op.Right) {
 				a.addError(line, "Division by zero")
@@ -1125,8 +1043,6 @@ func (a *Analyzer) checkPrimary(p *parser.Primary, line int) {
 	case p.SubExpr != nil:
 		a.checkExpr(p.SubExpr, line)
 	}
-
-	// Suffix chain: [index] and .method()
 	for _, s := range p.Suffix {
 		if s.Index != nil {
 			a.checkExpr(s.Index.Index, line)
@@ -1147,7 +1063,6 @@ func (a *Analyzer) checkIdent(name string, line int) {
 		a.markUsed(name)
 	}
 }
-
 
 func (a *Analyzer) checkLambda(l *parser.Lambda, line int) {
 	seen := make(map[string]bool)
@@ -1175,7 +1090,6 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 		a.checkExpr(arg, line)
 	}
 
-	// Mark function as used
 	if f, ok := a.functions[fc.Name]; ok {
 		f.Used = true
 		a.checkArityRange(fc.Name, len(fc.Args), f.MinArity, f.Arity, line)
@@ -1189,7 +1103,6 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 		return
 	}
 
-	// Namespaced user module call
 	if strings.Contains(fc.Name, "__") {
 		parts := strings.SplitN(fc.Name, "__", 2)
 		if imp, ok := a.importedFuncs["__user_module__"+parts[0]]; ok {
@@ -1202,13 +1115,11 @@ func (a *Analyzer) checkFuncCall(fc *parser.FuncCall, line int) {
 		}
 	}
 
-	// Variable holding a function
 	if a.isDefined(fc.Name) {
 		a.markUsed(fc.Name)
 		return
 	}
 
-	// Namespaced module call: math__sqrt from imported std/math
 	if strings.Contains(fc.Name, "__") {
 		parts := strings.SplitN(fc.Name, "__", 2)
 		if a.importedModules["std/"+parts[0]] || a.importedModules[parts[0]] {
@@ -1251,7 +1162,6 @@ func (a *Analyzer) inferExprType(expr *parser.Expr) string {
 	if expr == nil || expr.Left == nil {
 		return ""
 	}
-	// Simple case: no operators, just walk down to the primary
 	if len(expr.Ops) > 0 {
 		return "bool" // or expressions always produce bool
 	}
@@ -1315,11 +1225,9 @@ func (a *Analyzer) inferPrimaryType(p *parser.Primary) string {
 		return ""
 	}
 
-	// If there are index suffixes ([i] or ["key"]), the result type is
-	// unknown since list elements and dict values can be any type.
 	for _, s := range p.Suffix {
 		if s.Index != nil {
-			return "" // indexing produces unknown type
+			return ""
 		}
 	}
 
@@ -1347,15 +1255,12 @@ func (a *Analyzer) inferPrimaryType(p *parser.Primary) string {
 		}
 		return ""
 	case p.FuncCall != nil:
-		// Check return type of the function
 		if f, ok := a.functions[p.FuncCall.Name]; ok {
 			return f.ReturnType
 		}
-		// Stdlib return type
 		if rt := a.stdlibReturnType(p.FuncCall.Name); rt != "" {
 			return rt
 		}
-		// Known builtins return types
 		return a.inferBuiltinReturnType(p.FuncCall.Name)
 	case p.SubExpr != nil:
 		return a.inferExprType(p.SubExpr)
@@ -1380,7 +1285,6 @@ func (a *Analyzer) inferBuiltinReturnType(name string) string {
 	case "error":
 		return "error"
 	}
-	// Check namespaced stdlib functions
 	if strings.Contains(name, "__") {
 		parts := strings.SplitN(name, "__", 2)
 		return a.inferStdlibReturnType(parts[0], parts[1])
@@ -1479,14 +1383,12 @@ func (a *Analyzer) checkArity(name string, got, expected int, line int) {
 	}
 }
 
-// checkStdlibCallTypes checks argument types and arity for stdlib function calls.
 func (a *Analyzer) checkStdlibCallTypes(fc *parser.FuncCall, line int) {
 	sig, ok := a.stdlibSigs[fc.Name]
 	if !ok {
 		return
 	}
 
-	// Check visibility
 	if !sig.Pub {
 		name := fc.Name
 		if strings.Contains(name, "__") {
@@ -1498,13 +1400,11 @@ func (a *Analyzer) checkStdlibCallTypes(fc *parser.FuncCall, line int) {
 		return
 	}
 
-	// Check arity
 	if len(fc.Args) != sig.Arity {
 		a.addError(line, "'%s' expects %d args, got %d", fc.Name, sig.Arity, len(fc.Args))
 		return
 	}
 
-	// Check argument types where both the param and arg types are known
 	for i, arg := range fc.Args {
 		if i >= len(sig.ParamTypes) {
 			break
@@ -1523,7 +1423,6 @@ func (a *Analyzer) checkStdlibCallTypes(fc *parser.FuncCall, line int) {
 	}
 }
 
-// stdlibReturnType returns the return type of a stdlib function, or "" if unknown.
 func (a *Analyzer) stdlibReturnType(name string) string {
 	if sig, ok := a.stdlibSigs[name]; ok {
 		return sig.ReturnType
@@ -1532,7 +1431,6 @@ func (a *Analyzer) stdlibReturnType(name string) string {
 }
 
 func (a *Analyzer) checkDictLit(dl *parser.DictLit, line int) {
-	// Check for duplicate keys
 	seenKeys := make(map[string]bool)
 	for _, entry := range dl.Entries {
 		a.checkExpr(entry.Key, line)
@@ -1547,7 +1445,6 @@ func (a *Analyzer) checkDictLit(dl *parser.DictLit, line int) {
 	}
 }
 
-// Valid methods per type
 var validMethods = map[string]map[string]int{
 	"str": {
 		"len": 0, "upper": 0, "lower": 0, "trim": 0,
@@ -1598,9 +1495,6 @@ func (a *Analyzer) checkMethodCall(mc *parser.MethodCall, line int) {
 	}
 }
 
-// --- Helper functions for pattern detection ---
-
-// isConstTrue checks if an expression is the literal `true`.
 func isConstTrue(expr *parser.Expr) bool {
 	if expr == nil || expr.Left == nil || len(expr.Ops) > 0 {
 		return false
@@ -1628,7 +1522,6 @@ func isConstTrue(expr *parser.Expr) bool {
 	return u.Primary.Ident != nil && *u.Primary.Ident == "true"
 }
 
-// isConstFalse checks if an expression is the literal `false`.
 func isConstFalse(expr *parser.Expr) bool {
 	if expr == nil || expr.Left == nil || len(expr.Ops) > 0 {
 		return false
@@ -1656,7 +1549,6 @@ func isConstFalse(expr *parser.Expr) bool {
 	return u.Primary.Ident != nil && *u.Primary.Ident == "false"
 }
 
-// isLiteralZero checks if a Unary node is just the number 0.
 func isLiteralZero(u *parser.Unary) bool {
 	if u == nil || u.Primary == nil {
 		return false
@@ -1664,13 +1556,11 @@ func isLiteralZero(u *parser.Unary) bool {
 	return u.Primary.Number != nil && *u.Primary.Number == 0
 }
 
-// blockHasBreak checks if a block contains a break statement (0).
 func blockHasBreak(block *parser.Block) bool {
 	for _, stmt := range block.Statements {
 		if stmt.ExprStmt != nil && stmt.ExprStmt.Expr.IsBareLiteral(0) {
 			return true
 		}
-		// Check nested if/else blocks for break
 		if stmt.IfStmt != nil {
 			if blockHasBreak(stmt.IfStmt.Body) {
 				return true
@@ -1693,7 +1583,6 @@ func blockHasBreak(block *parser.Block) bool {
 	return false
 }
 
-// additionIdentName extracts a simple identifier name from an Addition node.
 func additionIdentName(add *parser.Addition) string {
 	if add == nil || add.Left == nil || len(add.Ops) > 0 {
 		return ""
@@ -1712,7 +1601,6 @@ func additionIdentName(add *parser.Addition) string {
 	return ""
 }
 
-// exprLiteralKey returns a string representation of a literal expression for duplicate detection.
 func exprLiteralKey(expr *parser.Expr) string {
 	if expr == nil || expr.Left == nil || len(expr.Ops) > 0 {
 		return ""
