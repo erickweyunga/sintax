@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 
 	"github.com/erickweyunga/sintax/codegen"
@@ -88,26 +89,51 @@ func clangCompile(irFile, outputFile string) error {
 	args = append(args, cFiles...)
 	args = append(args, "-lm")
 
-	// Boehm GC is mandatory for memory safety
-	gcFound := false
-	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
-		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
-		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
-			if _, err := os.Stat(filepath.Join(gcLib, ext)); err == nil {
-				args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
-				gcFound = true
-				goto foundGC
+	// Boehm GC — use bundled source or system library
+	gcDir := filepath.Join(runtimeDir, "gc")
+	gcAllC := filepath.Join(gcDir, "gc_all.c")
+	gcInclude := filepath.Join(gcDir, "include")
+	if _, err := os.Stat(gcAllC); err == nil {
+		// Bundled GC — compile from source (cached as .o)
+		gcObj := filepath.Join(gcDir, "gc.o")
+		if _, err := os.Stat(gcObj); err != nil {
+			// Compile gc_all.c → gc.o (only once)
+			gcCompileArgs := []string{"-c", "-O2", "-I" + gcInclude,
+				"-DGC_BUILTIN_ATOMIC",
+				"-DALL_INTERIOR_POINTERS",
+				"-DNO_EXECUTE_PERMISSION",
+				"-DUSE_MMAP",
+				"-DUSE_MUNMAP",
+			}
+			if goruntime.GOOS == "linux" {
+				gcCompileArgs = append(gcCompileArgs, "-DHAVE_DL_ITERATE_PHDR")
+			}
+			gcCompileArgs = append(gcCompileArgs, gcAllC, "-o", gcObj)
+			cmd := exec.Command("clang", gcCompileArgs...)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to compile GC: %s", strings.TrimSpace(string(out)))
 			}
 		}
-	}
-foundGC:
-	if !gcFound {
-		fmt.Fprintf(os.Stderr, "Error: Boehm GC (libgc) is required but not found.\n")
-		fmt.Fprintf(os.Stderr, "Install it:\n")
-		fmt.Fprintf(os.Stderr, "  macOS:  brew install bdw-gc\n")
-		fmt.Fprintf(os.Stderr, "  Ubuntu: sudo apt install libgc-dev\n")
-		fmt.Fprintf(os.Stderr, "  Fedora: sudo dnf install gc-devel\n")
-		return fmt.Errorf("missing dependency: libgc")
+		args = append(args, "-DSX_USE_GC", "-I"+gcInclude, gcObj)
+	} else {
+		// Fall back to system-installed libgc
+		found := false
+		for _, lib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
+			inc := strings.Replace(lib, "/lib", "/include", 1)
+			for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
+				if _, err := os.Stat(filepath.Join(lib, ext)); err == nil {
+					args = append(args, "-DSX_USE_GC", "-I"+inc, "-L"+lib, "-lgc")
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("Boehm GC not found. Reinstall Sintax or install libgc manually")
+		}
 	}
 
 	// Check for libcurl (HTTP support)

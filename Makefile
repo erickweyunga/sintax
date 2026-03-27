@@ -1,58 +1,22 @@
-APP_NAME = sintax
-GO = go
-SINTAX_HOME ?= $(HOME)/.sintax
+PREFIX = $(HOME)/.sintax
 
-.PHONY: build run compile install uninstall clean test repl example help
+.PHONY: build install clean
 
-## build: Build the sintax binary
 build:
-	$(GO) build -o $(APP_NAME) .
+	go build -o sintax .
 
-## run: Run a .sx file (usage: make run FILE=examples/tests.sx)
-run: build
-	./$(APP_NAME) $(FILE)
-
-## compile: Compile a .sx file to native binary
-compile: build
-	./$(APP_NAME) build $(FILE)
-
-## install: Install sintax + runtime to ~/.sintax/
 install: build
-	@mkdir -p $(SINTAX_HOME)/runtime $(SINTAX_HOME)/stdlib
-	@cp runtime/*.c runtime/*.h $(SINTAX_HOME)/runtime/
-	@cp stdlib/*.sx $(SINTAX_HOME)/stdlib/
-	@cp $(APP_NAME) $(SINTAX_HOME)/$(APP_NAME)
-	@echo "Installed to $(SINTAX_HOME)/"
-	@echo "Add to PATH: export PATH=\$$PATH:$(SINTAX_HOME)"
+	@mkdir -p $(PREFIX)/runtime/gc/include/private
+	@mkdir -p $(PREFIX)/runtime/gc/include/gc
+	@mkdir -p $(PREFIX)/stdlib
+	@echo "Installing Sintax to $(PREFIX)..."
+	@cp runtime/runtime.c runtime/runtime.h runtime/native.c $(PREFIX)/runtime/
+	@cp runtime/gc/gc_all.c $(PREFIX)/runtime/gc/
+	@cp -r runtime/gc/include/* $(PREFIX)/runtime/gc/include/
+	@cp runtime/gc/*.c runtime/gc/*.h $(PREFIX)/runtime/gc/ 2>/dev/null; true
+	@cp stdlib/*.sx $(PREFIX)/stdlib/
+	@install -m 755 sintax /usr/local/bin/sintax 2>/dev/null || install -m 755 sintax $(PREFIX)/sintax
+	@echo "Done! Run: sintax --help"
 
-## uninstall: Remove ~/.sintax/
-uninstall:
-	@rm -rf $(SINTAX_HOME)
-	@echo "Removed $(SINTAX_HOME)/"
-
-## repl: Launch the interactive REPL
-repl: build
-	./$(APP_NAME)
-
-## example: Run all example programs
-example: build
-	@echo "=== hello.sx ===" && ./$(APP_NAME) examples/hello.sx
-	@echo ""
-	@echo "=== dicts.sx ===" && ./$(APP_NAME) examples/dicts.sx
-	@echo ""
-	@echo "=== tests.sx ===" && ./$(APP_NAME) examples/tests.sx | tail -1
-
-## test: Run Go tests
-test:
-	$(GO) test ./...
-
-## clean: Remove build artifacts
 clean:
-	rm -f $(APP_NAME)
-	rm -rf .sintax/
-
-## help: Show available commands
-help:
-	@echo "Sintax"
-	@echo ""
-	@grep -E '^## ' Makefile | sed 's/## /  /'
+	rm -f sintax
