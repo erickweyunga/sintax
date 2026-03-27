@@ -7,20 +7,20 @@ type Program struct {
 }
 
 type Statement struct {
-	Pos         lexer.Position
-	FuncDef     *FuncDef     `( @@`
-	IfStmt      *IfStmt      `| @@`
-	CatchStmt   *CatchStmt   `| @@`
-	SwitchStmt  *SwitchStmt  `| @@`
-	WhileStmt   *WhileStmt   `| @@`
-	ForStmt     *ForStmt     `| @@`
+	Pos            lexer.Position
+	FuncDef        *FuncDef        `( @@`
+	IfStmt         *IfStmt         `| @@`
+	CatchStmt      *CatchStmt      `| @@`
+	SwitchStmt     *SwitchStmt     `| @@`
+	WhileStmt      *WhileStmt      `| @@`
+	ForStmt        *ForStmt        `| @@`
 	PrintStmt      *PrintStmt      `| @@`
 	ReturnStmt     *ReturnStmt     `| @@`
 	TypedAssign    *TypedAssign    `| @@`
 	IndexAssign    *IndexAssign    `| @@`
 	CompoundAssign *CompoundAssign `| @@`
 	Assignment     *Assignment     `| @@`
-	ExprStmt    *ExprStmt    `| @@ )`
+	ExprStmt       *ExprStmt       `| @@ )`
 }
 
 type FuncDef struct {
@@ -33,12 +33,12 @@ type FuncDef struct {
 }
 
 type Param struct {
-	Type       *string  `( @( "num" | "str" | "bool" | "list" | "dict" )`
-	TypedName  *string  `  @Ident`
-	DefaultNum *float64 `  ( "=" ( @Number`
-	DefaultStr *string  `         | @String`
-	DefaultBool *string `         | @( "true" | "false" | "null" ) ) )?`
-	Name       string   `| @Ident )`
+	Type        *string  `( @( "num" | "str" | "bool" | "list" | "dict" )`
+	TypedName   *string  `  @Ident`
+	DefaultNum  *float64 `  ( "=" ( @Number`
+	DefaultStr  *string  `         | @String`
+	DefaultBool *string  `         | @( "true" | "false" | "null" ) ) )?`
+	Name        string   `| @Ident )`
 }
 
 func (p *Param) GetName() string {
@@ -120,15 +120,15 @@ type TypedAssign struct {
 }
 
 type IndexAssign struct {
-	Name    string      `@Ident`
-	Indices []*IndexOp  `@@+ "="`
-	Value   *Expr       `@@ ";"`
+	Name    string     `@Ident`
+	Indices []*IndexOp `@@+ "="`
+	Value   *Expr      `@@ ";"`
 }
 
 type CompoundAssign struct {
-	Name string `@Ident`
-	Op   string `@( "+=" | "-=" | "*=" | "/=" )`
-	Value *Expr `@@ ";"`
+	Name  string `@Ident`
+	Op    string `@( "+=" | "-=" | "*=" | "/=" )`
+	Value *Expr  `@@ ";"`
 }
 
 type Assignment struct {
@@ -192,15 +192,15 @@ type Unary struct {
 }
 
 type Primary struct {
-	Lambda   *Lambda    `( @@`
-	FuncCall *FuncCall  `| @@`
-	DictLit  *DictLit   `| @@`
-	ListLit  *ListLit   `| @@`
-	Number   *float64   `| @Number`
-	String   *string    `| @String`
-	Ident    *string    `| @Ident`
-	SubExpr  *Expr      `| "(" @@ ")" )`
-	Suffix   []*Suffix  `@@*`
+	Lambda   *Lambda   `( @@`
+	FuncCall *FuncCall `| @@`
+	DictLit  *DictLit  `| @@`
+	ListLit  *ListLit  `| @@`
+	Number   *float64  `| @Number`
+	String   *string   `| @String`
+	Ident    *string   `| @Ident`
+	SubExpr  *Expr     `| "(" @@ ")" )`
+	Suffix   []*Suffix `@@*`
 }
 
 type Suffix struct {

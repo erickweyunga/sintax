@@ -98,8 +98,8 @@ type FuncObj struct {
 	Params      []FuncParam
 	ReturnTypes []string
 	Body        *parser.Block
-	Env        Env
-	Pub        bool
+	Env         Env
+	Pub         bool
 }
 
 func (o *FuncObj) Inspect() string { return fmt.Sprintf("<fn %s>", o.Name) }

@@ -236,16 +236,16 @@ var nativeOneArg = map[string]string{
 	"__native_log2": "__native_log2", "__native_log10": "__native_log10",
 	"__native_exp": "__native_exp", "__native_floor": "__native_floor",
 	"__native_ceil": "__native_ceil", "__native_round": "__native_round",
-	"__native_cbrt": "__native_cbrt",
+	"__native_cbrt":  "__native_cbrt",
 	"__native_upper": "__native_upper", "__native_lower": "__native_lower",
 	"__native_trim": "__native_trim", "__native_char_code": "__native_char_code",
 	"__native_from_char_code": "__native_from_char_code",
-	"__native_str_reverse": "__native_str_reverse",
-	"__native_list_reverse": "__native_list_reverse",
-	"__native_read_file": "__native_read_file", "__native_file_exists": "__native_file_exists",
+	"__native_str_reverse":    "__native_str_reverse",
+	"__native_list_reverse":   "__native_list_reverse",
+	"__native_read_file":      "__native_read_file", "__native_file_exists": "__native_file_exists",
 	"__native_delete_file": "__native_delete_file", "__native_getenv": "__native_getenv",
 	"__native_exec": "__native_exec", "__native_sleep": "__native_sleep",
-	"__native_exit": "__native_exit",
+	"__native_exit":       "__native_exit",
 	"__native_json_parse": "__native_json_parse", "__native_json_stringify": "__native_json_stringify",
 	"__native_json_pretty": "__native_json_pretty",
 }
@@ -266,9 +266,9 @@ var nativeTwoArg = map[string]string{
 }
 
 var nativeThreeArg = map[string]string{
-	"__native_replace":      "__native_replace",
-	"__native_slice":        "__native_slice",
-	"__native_list_insert":  "__native_list_insert",
+	"__native_replace":       "__native_replace",
+	"__native_slice":         "__native_slice",
+	"__native_list_insert":   "__native_list_insert",
 	"__native_regex_replace": "__native_regex_replace",
 }
 

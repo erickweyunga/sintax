@@ -35,17 +35,17 @@ func (e Error) Format() string {
 }
 
 type FuncInfo struct {
-	Name       string
-	Arity      int
-	MinArity   int      // minimum args (accounting for defaults)
-	ParamNames []string
-	ParamTypes []string // type per param ("" = untyped)
+	Name        string
+	Arity       int
+	MinArity    int // minimum args (accounting for defaults)
+	ParamNames  []string
+	ParamTypes  []string // type per param ("" = untyped)
 	ReturnType  string   // "" = untyped, first type for inference
 	ReturnTypes []string // all return types (for union types)
 	Line        int      // definition line (0 = builtin)
-	Used       bool     // was this function ever called?
-	IsBuiltin  bool
-	Pub        bool
+	Used        bool     // was this function ever called?
+	IsBuiltin   bool
+	Pub         bool
 }
 
 type VarInfo struct {
@@ -97,11 +97,11 @@ type Analyzer struct {
 
 func New(file string, lines []string, lineMap []int) *Analyzer {
 	return &Analyzer{
-		scopes:          []map[string]*VarInfo{},
-		functions:       make(map[string]*FuncInfo),
-		importedFuncs:   make(map[string]*ImportInfo),
-		importedModules: make(map[string]bool),
-		usedModules:     make(map[string]bool),
+		scopes:           []map[string]*VarInfo{},
+		functions:        make(map[string]*FuncInfo),
+		importedFuncs:    make(map[string]*ImportInfo),
+		importedModules:  make(map[string]bool),
+		usedModules:      make(map[string]bool),
 		loopStringConcat: make(map[string]bool),
 		file:             file,
 		lines:            lines,
@@ -373,7 +373,7 @@ func (a *Analyzer) loadStdlibDir(dir string) {
 			if fd.ReturnType != nil {
 				sig.ReturnType = *fd.ReturnType
 			}
-				a.stdlibSigs[modName+"__"+fd.Name] = sig
+			a.stdlibSigs[modName+"__"+fd.Name] = sig
 			a.stdlibSigs[fd.Name] = sig
 		}
 	}
@@ -1637,4 +1637,3 @@ func exprLiteralKey(expr *parser.Expr) string {
 	}
 	return ""
 }
-
