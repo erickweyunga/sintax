@@ -141,6 +141,7 @@ SxValue* sx_dict_has(SxValue *dict, SxValue *key);
 SxValue* sx_len(SxValue *v);
 SxValue* sx_type(SxValue *v);
 SxValue* sx_range(SxValue *start, SxValue *end);
+SxValue* sx_range3(SxValue *start, SxValue *end, SxValue *step);
 SxValue* sx_to_number(SxValue *v);
 SxValue* sx_to_string(SxValue *v);
 SxValue* sx_to_bool(SxValue *v);

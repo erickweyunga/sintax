@@ -55,6 +55,7 @@ type VarInfo struct {
 	Type    string // "" = dynamic
 	Defined bool
 	Used    bool // was this variable ever read?
+	Const   bool // true if declared with const
 	Line    int  // definition line
 	Name    string
 }
@@ -452,7 +453,7 @@ func (a *Analyzer) registerBuiltins() {
 		"len":    1,
 		"push":   2,
 		"pop":    2,
-		"range":  -1, // 1 or 2
+		"range":  -1, // 1, 2, or 3
 		"input":  -1, // 0 or 1
 		"keys":   1,
 		"values": 1,
@@ -822,12 +823,29 @@ func (a *Analyzer) checkForStmt(fs *parser.ForStmt, line int) {
 	}
 
 	a.inLoop++
-	a.define(fs.Var, "", line)
-	// Mark for variable as used (it's the iteration variable)
-	for i := len(a.scopes) - 1; i >= 0; i-- {
-		if v, ok := a.scopes[i][fs.Var]; ok {
-			v.Used = true
-			break
+	if fs.ValueVar != nil {
+		// Two-variable form: for i, val in list:
+		a.define(fs.Var, "num", line) // index is always num
+		a.define(*fs.ValueVar, "", line)
+		for i := len(a.scopes) - 1; i >= 0; i-- {
+			if v, ok := a.scopes[i][fs.Var]; ok {
+				v.Used = true
+				break
+			}
+		}
+		for i := len(a.scopes) - 1; i >= 0; i-- {
+			if v, ok := a.scopes[i][*fs.ValueVar]; ok {
+				v.Used = true
+				break
+			}
+		}
+	} else {
+		a.define(fs.Var, "", line)
+		for i := len(a.scopes) - 1; i >= 0; i-- {
+			if v, ok := a.scopes[i][fs.Var]; ok {
+				v.Used = true
+				break
+			}
 		}
 	}
 
@@ -865,6 +883,11 @@ func (a *Analyzer) checkTypedAssign(ta *parser.TypedAssign, line int) {
 	}
 
 	a.define(ta.Name, ta.Type, line)
+	if ta.Const {
+		if v := a.findVar(ta.Name); v != nil {
+			v.Const = true
+		}
+	}
 }
 
 func (a *Analyzer) checkIndexAssign(ia *parser.IndexAssign, line int) {
@@ -880,6 +903,10 @@ func (a *Analyzer) checkIndexAssign(ia *parser.IndexAssign, line int) {
 }
 
 func (a *Analyzer) checkCompoundAssign(ca *parser.CompoundAssign, line int) {
+	if v := a.findVar(ca.Name); v != nil && v.Const {
+		a.addError(line, "Cannot reassign const '%s'", ca.Name)
+		return
+	}
 	if !a.isDefined(ca.Name) {
 		a.addError(line, "Undefined name: '%s'", ca.Name)
 	} else {
@@ -903,6 +930,12 @@ func (a *Analyzer) checkCompoundAssign(ca *parser.CompoundAssign, line int) {
 func (a *Analyzer) checkAssignment(assign *parser.Assignment, line int) {
 	a.checkExpr(assign.Value, line)
 
+	// Check const reassignment
+	if v := a.findVar(assign.Name); v != nil && v.Const {
+		a.addError(line, "Cannot reassign const '%s'", assign.Name)
+		return
+	}
+
 	valType := a.inferExprType(assign.Value)
 
 	if existingType := a.getVarType(assign.Name); existingType != "" && existingType != "fn" {
@@ -912,7 +945,6 @@ func (a *Analyzer) checkAssignment(assign *parser.Assignment, line int) {
 	}
 
 	if !a.isDefined(assign.Name) {
-		// Infer type from the assigned value
 		a.define(assign.Name, valType, line)
 	}
 }
@@ -1410,8 +1442,8 @@ func (a *Analyzer) checkArity(name string, got, expected int, line int) {
 	if expected < 0 {
 		switch name {
 		case "range":
-			if got < 1 || got > 2 {
-				a.addError(line, "'%s' expects 1 or 2 args, got %d", name, got)
+			if got < 1 || got > 3 {
+				a.addError(line, "'%s' expects 1, 2, or 3 args, got %d", name, got)
 			}
 		case "input":
 			if got > 1 {

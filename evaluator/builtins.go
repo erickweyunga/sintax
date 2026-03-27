@@ -117,20 +117,23 @@ func builtinPop(args []*parser.Expr, env *Environment) object.Object {
 }
 
 // range — generate a range of numbers as a list
+// range(n), range(start, end), range(start, end, step)
 func builtinRange(args []*parser.Expr, env *Environment) object.Object {
-	if len(args) < 1 || len(args) > 2 {
-		runtimeError("range() requires 1 or 2 arguments")
+	if len(args) < 1 || len(args) > 3 {
+		runtimeError("range() requires 1, 2, or 3 arguments")
 	}
 
-	var start, end float64
-	if len(args) == 1 {
+	var start, end, step float64
+	switch len(args) {
+	case 1:
 		start = 0
+		step = 1
 		n, ok := evalExpr(args[0], env).(*object.NumberObj)
 		if !ok {
 			runtimeError("range() requires num arguments")
 		}
 		end = n.Value
-	} else {
+	case 2:
 		sn, ok1 := evalExpr(args[0], env).(*object.NumberObj)
 		en, ok2 := evalExpr(args[1], env).(*object.NumberObj)
 		if !ok1 || !ok2 {
@@ -138,11 +141,31 @@ func builtinRange(args []*parser.Expr, env *Environment) object.Object {
 		}
 		start = sn.Value
 		end = en.Value
+		step = 1
+	case 3:
+		sn, ok1 := evalExpr(args[0], env).(*object.NumberObj)
+		en, ok2 := evalExpr(args[1], env).(*object.NumberObj)
+		st, ok3 := evalExpr(args[2], env).(*object.NumberObj)
+		if !ok1 || !ok2 || !ok3 {
+			runtimeError("range() requires num arguments")
+		}
+		start = sn.Value
+		end = en.Value
+		step = st.Value
+		if step == 0 {
+			runtimeError("range() step cannot be 0")
+		}
 	}
 
 	var elements []object.Object
-	for i := start; i < end; i++ {
-		elements = append(elements, &object.NumberObj{Value: i})
+	if step > 0 {
+		for i := start; i < end; i += step {
+			elements = append(elements, &object.NumberObj{Value: i})
+		}
+	} else {
+		for i := start; i > end; i += step {
+			elements = append(elements, &object.NumberObj{Value: i})
+		}
 	}
 	return &object.ListObj{Elements: elements}
 }

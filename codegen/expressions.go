@@ -321,6 +321,9 @@ func (cg *CodeGen) compileFuncCall(fc *parser.FuncCall) llvmValue.Value {
 		if len(fc.Args) == 1 {
 			return cg.callRT("sx_range", cg.callRT("sx_number", constant.NewFloat(types.Double, 0)), cg.compileExpr(fc.Args[0]))
 		}
+		if len(fc.Args) == 3 {
+			return cg.callRT("sx_range3", cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]), cg.compileExpr(fc.Args[2]))
+		}
 		return cg.callRT("sx_range", cg.compileExpr(fc.Args[0]), cg.compileExpr(fc.Args[1]))
 	case "input":
 		if len(fc.Args) > 0 {

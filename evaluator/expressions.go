@@ -674,6 +674,20 @@ func evalArithOp(op string, left, right object.Object) object.Object {
 		}
 	}
 
+	// String * num → repeat
+	if op == "*" {
+		if ls, ok := left.(*object.StringObj); ok {
+			if rn, ok := right.(*object.NumberObj); ok {
+				return &object.StringObj{Value: strings.Repeat(ls.Value, int(rn.Value))}
+			}
+		}
+		if rn, ok := left.(*object.NumberObj); ok {
+			if rs, ok := right.(*object.StringObj); ok {
+				return &object.StringObj{Value: strings.Repeat(rs.Value, int(rn.Value))}
+			}
+		}
+	}
+
 	ln, lok := left.(*object.NumberObj)
 	rn, rok := right.(*object.NumberObj)
 	if !lok || !rok {

@@ -89,10 +89,12 @@ type WhileStmt struct {
 }
 
 // ForStmt: for var in iterable: body
+// or:      for idx, var in iterable: body
 type ForStmt struct {
-	Var  string `"for" @Ident`
-	Iter *Expr  `"in" @@`
-	Body *Block `@@`
+	Var      string  `"for" @Ident`
+	ValueVar *string `( "," @Ident )?`
+	Iter     *Expr   `"in" @@`
+	Body     *Block  `@@`
 }
 
 // SwitchStmt: match expr { case val: body ... _: body }
@@ -113,8 +115,9 @@ type ReturnStmt struct {
 	Value *Expr `"return" @@ ";"`
 }
 
-// TypedAssign: type name = value; (e.g. num x = 5;)
+// TypedAssign: [const] type name = value; (e.g. num x = 5; const num PI = 3.14;)
 type TypedAssign struct {
+	Const bool   `@"const"?`
 	Type  string `@( "num" | "str" | "bool" | "list" | "dict" )`
 	Name  string `@Ident "="`
 	Value *Expr  `@@ ";"`

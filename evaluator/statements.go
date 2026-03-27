@@ -146,9 +146,18 @@ func evalForStmt(fs *parser.ForStmt, env *Environment) object.Object {
 		runtimeError("'for' requires a list, dict, or str")
 	}
 
+	// Two-variable form: for i, val in list:
+	// Var = index, ValueVar = value
+	hasIndex := fs.ValueVar != nil
+
 	var result object.Object = object.Null
-	for _, item := range items {
-		env.Set(fs.Var, item)
+	for i, item := range items {
+		if hasIndex {
+			env.Set(fs.Var, &object.NumberObj{Value: float64(i)})
+			env.Set(*fs.ValueVar, item)
+		} else {
+			env.Set(fs.Var, item)
+		}
 		result = evalStatements(fs.Body.Statements, env)
 		if _, ok := result.(*object.BreakObj); ok {
 			break
@@ -221,6 +230,9 @@ func evalIndexAssign(ia *parser.IndexAssign, env *Environment) object.Object {
 }
 
 func evalCompoundAssign(ca *parser.CompoundAssign, env *Environment) object.Object {
+	if env.IsConst(ca.Name) {
+		runtimeError("Cannot reassign const '%s'", ca.Name)
+	}
 	obj, ok := env.Get(ca.Name)
 	if !ok {
 		runtimeError("Undefined name: '%s'", ca.Name)
@@ -245,11 +257,18 @@ func evalTypedAssign(ta *parser.TypedAssign, env *Environment) object.Object {
 	if valType != expectedType {
 		runtimeError("Type mismatch: '%s' is %s, expected %s", ta.Name, valType, expectedType)
 	}
-	env.SetTyped(ta.Name, expectedType, val)
+	if ta.Const {
+		env.SetConst(ta.Name, expectedType, val)
+	} else {
+		env.SetTyped(ta.Name, expectedType, val)
+	}
 	return val
 }
 
 func evalAssignment(assign *parser.Assignment, env *Environment) object.Object {
+	if env.IsConst(assign.Name) {
+		runtimeError("Cannot reassign const '%s'", assign.Name)
+	}
 	val := evalExpr(assign.Value, env)
 	if typ, ok := env.GetType(assign.Name); ok && typ != "" {
 		valType := object.TypeName(val)

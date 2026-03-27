@@ -431,7 +431,21 @@ SxValue* sx_sub(SxValue *a, SxValue *b) {
 SxValue* sx_mul(SxValue *a, SxValue *b) {
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(a->number * b->number);
-    sx_error("Operation '*' requires num values");
+    // String * num → repeat string
+    if (a->type == SX_STRING && b->type == SX_NUMBER) {
+        int count = (int)b->number;
+        if (count <= 0) return sx_string("");
+        int slen = strlen(a->string);
+        char *buf = (char*)SX_MALLOC(slen * count + 1);
+        for (int i = 0; i < count; i++)
+            memcpy(buf + i * slen, a->string, slen);
+        buf[slen * count] = '\0';
+        SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
+    }
+    if (a->type == SX_NUMBER && b->type == SX_STRING) {
+        return sx_mul(b, a); // swap: 3 * "ha" → "ha" * 3
+    }
+    sx_error("Operation '*' requires num values or str * num");
     return sx_null();
 }
 
@@ -699,7 +713,14 @@ SxValue* sx_dict_has(SxValue *dict, SxValue *key) {
 SxValue* sx_index(SxValue *collection, SxValue *idx) {
     switch (collection->type) {
         case SX_LIST: return sx_list_get(collection, idx);
-        case SX_DICT: return sx_dict_get(collection, idx);
+        case SX_DICT:
+            // Numeric index on dict: return the key at that position
+            if (idx->type == SX_NUMBER) {
+                int i = (int)idx->number;
+                if (i < 0 || i >= collection->dict.len) sx_error("Dict index out of range");
+                return sx_string(collection->dict.keys[i]);
+            }
+            return sx_dict_get(collection, idx);
         case SX_STRING: {
             if (idx->type != SX_NUMBER) sx_error("Index must be a num");
             int slen = (int)strlen(collection->string);
@@ -775,6 +796,21 @@ SxValue* sx_range(SxValue *start, SxValue *end) {
     SxValue *list = sx_list_new();
     for (double i = start->number; i < end->number; i++)
         sx_list_append(list, sx_number(i));
+    return list;
+}
+
+SxValue* sx_range3(SxValue *start, SxValue *end, SxValue *step) {
+    if (start->type != SX_NUMBER || end->type != SX_NUMBER || step->type != SX_NUMBER)
+        sx_error("range() requires num arguments");
+    if (step->number == 0) sx_error("range() step cannot be 0");
+    SxValue *list = sx_list_new();
+    if (step->number > 0) {
+        for (double i = start->number; i < end->number; i += step->number)
+            sx_list_append(list, sx_number(i));
+    } else {
+        for (double i = start->number; i > end->number; i += step->number)
+            sx_list_append(list, sx_number(i));
+    }
     return list;
 }
 

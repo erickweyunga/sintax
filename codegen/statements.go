@@ -580,7 +580,13 @@ func (cg *CodeGen) compileForStmt(fs *parser.ForStmt) {
 	cg.block = bodyBlock
 	idx2 := cg.block.NewLoad(sxValuePtr, idxAlloca)
 	elem := cg.callRT("sx_index", iter, idx2)
-	cg.setVar(fs.Var, elem)
+	if fs.ValueVar != nil {
+		// Two-variable form: for i, val in list:
+		cg.setVar(fs.Var, idx2)
+		cg.setVar(*fs.ValueVar, elem)
+	} else {
+		cg.setVar(fs.Var, elem)
+	}
 
 	for _, stmt := range fs.Body.Statements {
 		cg.compileStatement(stmt)

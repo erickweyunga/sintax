@@ -154,6 +154,7 @@ var runtimeDecls = []rtDecl{
 	{"sx_sort", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_type", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_range", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
+	{"sx_range3", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr, sxValuePtr}},
 	{"sx_to_number", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_to_string", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_to_bool", sxValuePtr, []types.Type{sxValuePtr}},
