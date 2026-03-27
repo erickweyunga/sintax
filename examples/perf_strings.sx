@@ -1,0 +1,53 @@
+-- Performance: string operations at scale
+
+use "std/string"
+use "std/os"
+
+start = os/time()
+
+-- Build a large string from parts
+fn () str build_large_string:
+    parts = []
+    i = 0
+    while i < 5000:
+        push(parts, "item-" + str(i))
+        i += 1
+    return string/join(parts, ",")
+
+big = build_large_string()
+>> "Built string of length: " + str(len(big))
+
+-- Search within large string
+>> "Contains 'item-4999': " + str(string/contains(big, "item-4999"))
+>> "Index of 'item-2500': " + str(string/index_of(big, "item-2500"))
+
+-- Split and rejoin
+parts = string/split(big, ",")
+>> "Split into " + str(len(parts)) + " parts"
+rejoined = string/join(parts, " | ")
+>> "Rejoined length: " + str(len(rejoined))
+
+-- Repeated replace
+fn (str s, num n) str chain_replace:
+    result = s
+    i = 0
+    while i < n:
+        result = string/replace(result, str(i), "[" + str(i) + "]")
+        i += 1
+    return result
+
+small = chain_replace("0 1 2 3 4 5 6 7 8 9", 10)
+>> "After replace chain: " + small
+
+-- String reversal at scale
+fn () void reverse_test:
+    i = 0
+    while i < 10000:
+        s = "hello world " + str(i)
+        r = string/reverse(s)
+        i += 1
+
+reverse_test()
+
+elapsed = os/time() - start
+>> "String perf: " + str(elapsed) + "s"

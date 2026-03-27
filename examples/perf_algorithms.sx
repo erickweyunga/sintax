@@ -1,0 +1,127 @@
+-- Performance: real algorithms
+
+use "std/os"
+use "std/string"
+
+start = os/time()
+
+-- Sort 10K random-ish numbers using builtin sort
+nums = []
+i = 0
+seed = 12345
+while i < 10000:
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    push(nums, seed % 100000)
+    i += 1
+
+sorted_nums = sort(nums)
+>> "Sort 10K: first=" + str(sorted_nums[0]) + " last=" + str(sorted_nums[9999])
+
+-- Binary search
+fn (list arr, num target) num binary_search:
+    lo = 0
+    hi = len(arr) - 1
+    while lo <= hi:
+        mid = lo + (hi - lo) / 2
+        if arr[mid] == target:
+            return mid
+        if arr[mid] < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return -1
+
+idx = binary_search(sorted_nums, sorted_nums[500])
+>> "Binary search found at: " + str(idx)
+
+-- Matrix multiplication (lists of lists)
+fn (num rows, num cols, num val) list make_matrix:
+    matrix = []
+    r = 0
+    while r < rows:
+        row = []
+        c = 0
+        while c < cols:
+            push(row, val + r * cols + c)
+            c += 1
+        push(matrix, row)
+        r += 1
+    return matrix
+
+fn (list a, list b) list mat_mul:
+    rows = len(a)
+    cols = len(b[0])
+    inner = len(b)
+    result = []
+    r = 0
+    while r < rows:
+        row = []
+        c = 0
+        while c < cols:
+            sum = 0
+            k = 0
+            while k < inner:
+                sum = sum + a[r][k] * b[k][c]
+                k += 1
+            push(row, sum)
+            c += 1
+        push(result, row)
+        r += 1
+    return result
+
+m1 = make_matrix(20, 20, 1)
+m2 = make_matrix(20, 20, 2)
+result = mat_mul(m1, m2)
+>> "Matrix 20x20 mul: [0][0]=" + str(result[0][0])
+
+-- Prime sieve (Sieve of Eratosthenes)
+fn (num limit) list sieve:
+    is_prime = []
+    i = 0
+    while i <= limit:
+        push(is_prime, true)
+        i += 1
+    is_prime[0] = false
+    is_prime[1] = false
+
+    i = 2
+    while i * i <= limit:
+        if is_prime[i]:
+            j = i * i
+            while j <= limit:
+                is_prime[j] = false
+                j += i
+        i += 1
+
+    primes = []
+    i = 2
+    while i <= limit:
+        if is_prime[i]:
+            push(primes, i)
+        i += 1
+    return primes
+
+primes = sieve(10000)
+>> "Primes up to 10000: " + str(len(primes))
+>> "Last prime: " + str(primes[len(primes) - 1])
+
+-- Word frequency counter
+fn (str text) dict word_freq:
+    words = string/split(text, " ")
+    freq = {}
+    for word in words:
+        w = string/lower(string/trim(word))
+        if len(w) > 0:
+            if has(freq, w):
+                freq[w] = freq[w] + 1
+            else:
+                freq[w] = 1
+    return freq
+
+text = "the quick brown fox jumps over the lazy dog the fox the dog"
+freq = word_freq(text)
+>> "Word 'the': " + str(freq["the"])
+>> "Word 'fox': " + str(freq["fox"])
+
+elapsed = os/time() - start
+>> "Algorithms perf: " + str(elapsed) + "s"

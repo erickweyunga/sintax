@@ -1,0 +1,61 @@
+-- A real program: JSON-backed todo list manager
+
+use "std/os"
+use "std/json"
+
+fn (str path) list load_todos:
+    if not os/exists(path):
+        return []
+    catch data = os/read(path):
+        return []
+    catch todos = json/parse(data):
+        return []
+    return todos
+
+fn (list todos, str path) void save_todos:
+    os/write(path, json/pretty(todos))
+
+fn (list todos, str title, str path) list add_todo:
+    todo = {"title": title, "done": false, "id": len(todos) + 1}
+    push(todos, todo)
+    save_todos(todos, path)
+    return todos
+
+fn (list todos, num id, str path) list complete_todo:
+    i = 0
+    while i < len(todos):
+        if todos[i]["id"] == id:
+            todos[i]["done"] = true
+        i += 1
+    save_todos(todos, path)
+    return todos
+
+fn (list todos) void show_todos:
+    if len(todos) == 0:
+        >> "  No todos yet!"
+        return null
+    for i, todo in todos:
+        status = "[ ]"
+        if todo["done"]:
+            status = "[x]"
+        >> "  " + status + " #" + str(todo["id"]) + " " + todo["title"]
+
+path = "/tmp/sintax_todos.json"
+>> "=== Sintax Todo App ==="
+>> ""
+
+todos = load_todos(path)
+todos = add_todo(todos, "Learn Sintax", path)
+todos = add_todo(todos, "Write a program", path)
+todos = add_todo(todos, "Ship it", path)
+todos = complete_todo(todos, 1, path)
+
+>> "Current todos:"
+show_todos(todos)
+>> ""
+
+done_count = len(filter(todos, fn(t) -> t["done"]))
+>> "Total: " + str(len(todos)) + " | Done: " + str(done_count)
+
+os/delete(path)
+>> "Done!"

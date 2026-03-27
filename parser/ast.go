@@ -33,7 +33,7 @@ type FuncDef struct {
 }
 
 type Param struct {
-	Type        *string  `( @( "num" | "str" | "bool" | "list" | "dict" )`
+	Type        *string  `( @( "num" | "str" | "bool" | "list" | "dict" | "fn" )`
 	TypedName   *string  `  @Ident`
 	DefaultNum  *float64 `  ( "=" ( @Number`
 	DefaultStr  *string  `         | @String`

@@ -1,0 +1,87 @@
+-- Performance: closures, higher-order functions, recursion
+
+use "std/os"
+
+start = os/time()
+
+-- Closure factory: create 1000 counters
+fn () fn make_counter:
+    count = 0
+    fn () num inc:
+        count = count + 1
+        return count
+    return inc
+
+counters = []
+i = 0
+while i < 1000:
+    push(counters, make_counter())
+    i += 1
+
+-- Increment each counter 10 times
+i = 0
+while i < 1000:
+    c = counters[i]
+    j = 0
+    while j < 10:
+        c()
+        j += 1
+    i += 1
+
+c0 = counters[0]
+c999 = counters[999]
+>> "Counter 0: " + str(c0())
+>> "Counter 999: " + str(c999())
+
+-- Recursive fibonacci
+fn (num n) num fib:
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+>> "fib(30): " + str(fib(30))
+
+-- Mutual recursion
+fn (num n) bool is_even:
+    if n == 0:
+        return true
+    return is_odd(n - 1)
+
+fn (num n) bool is_odd:
+    if n == 0:
+        return false
+    return is_even(n - 1)
+
+>> "is_even(100): " + str(is_even(100))
+>> "is_odd(99): " + str(is_odd(99))
+
+-- Higher-order: lambdas as arguments
+>> "map([1,2,3], *2): " + str(map([1, 2, 3], fn(x) -> x * 2))
+>> "filter([1..5], >3): " + str(filter([1, 2, 3, 4, 5], fn(x) -> x > 3))
+>> "reduce([1..4], sum): " + str(reduce([1, 2, 3, 4], fn(a, b) -> a + b, 0))
+
+-- Closure with shared mutable state
+fn () list make_stack:
+    items = []
+    fn (num value) void push_fn:
+        push(items, value)
+    fn () num pop_fn:
+        return pop(items, len(items) - 1)
+    fn () num size_fn:
+        return len(items)
+    return [push_fn, pop_fn, size_fn]
+
+stack = make_stack()
+push_it = stack[0]
+pop_it = stack[1]
+size_it = stack[2]
+
+push_it(10)
+push_it(20)
+push_it(30)
+>> "Stack size: " + str(size_it())
+>> "Popped: " + str(pop_it())
+>> "Stack size after pop: " + str(size_it())
+
+elapsed = os/time() - start
+>> "Closures perf: " + str(elapsed) + "s"

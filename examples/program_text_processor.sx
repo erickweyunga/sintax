@@ -1,0 +1,96 @@
+-- A real program: text processing pipeline
+
+use "std/string"
+use "std/regex"
+use "std/list"
+use "std/os"
+
+>> "=== Sintax Text Processor ==="
+>> ""
+
+-- Sample data
+text = `Name: Eric Kweyunga
+Email: eric@example.com
+Age: 25
+Location: Tanzania
+
+Name: Jane Doe
+Email: jane@test.org
+Age: 30
+Location: Kenya
+
+Name: John Smith
+Email: john@demo.net
+Age: 28
+Location: Uganda`
+
+-- Parse structured text into records
+fn (str raw) list parse_records:
+    blocks = string/split(raw, "\n\n")
+    records = []
+    for block in blocks:
+        record = {}
+        lines = string/split(block, "\n")
+        for line in lines:
+            parts = string/split(line, ": ")
+            if len(parts) == 2:
+                key = string/lower(string/trim(parts[0]))
+                val = string/trim(parts[1])
+                record[key] = val
+        if len(record) > 0:
+            push(records, record)
+    return records
+
+records = parse_records(text)
+>> "Parsed " + str(len(records)) + " records"
+>> ""
+
+-- Display records
+for i, r in records:
+    >> str(i + 1) + ". " + r["name"] + " <" + r["email"] + "> - " + r["location"]
+>> ""
+
+-- Count by location
+count = 0
+for r in records:
+    if regex/match("Tanzania|Kenya|Uganda", r["location"]):
+        count += 1
+>> "East African: " + str(count)
+
+-- Extract emails with regex
+fn (str text) list extract_emails:
+    return regex/find("[a-zA-Z0-9.]+@[a-zA-Z0-9.]+", text)
+
+emails = extract_emails(text)
+>> "Emails found: " + str(emails)
+
+-- Transform: uppercase names
+fn (list records) list uppercase_names:
+    return map(records, fn(r) -> {"name": string/upper(r["name"]), "email": r["email"], "location": r["location"]})
+
+-- Age statistics
+fn (list records) dict age_stats:
+    ages = map(records, fn(r) -> num(r["age"]))
+    total = reduce(ages, fn(a, b) -> a + b, 0)
+    return {"count": str(len(ages)), "total": str(total), "average": str(total / len(ages))}
+
+stats = age_stats(records)
+>> ""
+>> "Age stats:"
+>> "  Count: " + stats["count"]
+>> "  Average: " + stats["average"]
+
+-- Generate CSV output
+fn (list records) str to_csv:
+    header = "name,email,age,location"
+    rows = [header]
+    for r in records:
+        push(rows, r["name"] + "," + r["email"] + "," + r["age"] + "," + r["location"])
+    return string/join(rows, "\n")
+
+>> ""
+>> "CSV output:"
+>> to_csv(records)
+
+>> ""
+>> "Done!"

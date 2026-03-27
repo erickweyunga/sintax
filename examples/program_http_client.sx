@@ -1,0 +1,42 @@
+-- A real program: HTTP API client
+
+use "std/http"
+use "std/json"
+
+fn () void main:
+    >> "=== Sintax HTTP Client ==="
+    >> ""
+
+    >> "Fetching data from httpbin.org..."
+    catch response = http/get("https://httpbin.org/json"):
+        >> "Failed: " + str(response)
+
+    data = json/parse(response)
+    >> "Title: " + data["slideshow"]["title"]
+    >> "Author: " + data["slideshow"]["author"]
+    >> ""
+
+    >> "Posting data..."
+    payload = json/stringify({"name": "Sintax", "version": 1})
+    catch post_resp = http/post("https://httpbin.org/post", payload):
+        >> "Post failed: " + str(post_resp)
+
+    result = json/parse(post_resp)
+    >> "Server received: " + result["data"]
+    >> ""
+
+    >> "Fetching users..."
+    catch users_resp = http/get("https://jsonplaceholder.typicode.com/users"):
+        >> "Failed: " + str(users_resp)
+
+    users = json/parse(users_resp)
+    >> "Found " + str(len(users)) + " users:"
+    i = 0
+    while i < len(users) and i < 5:
+        >> "  " + users[i]["name"] + " (" + users[i]["email"] + ")"
+        i += 1
+
+    >> ""
+    >> "Done!"
+
+main()

@@ -1,0 +1,96 @@
+-- Performance: error handling, catch, match patterns
+
+use "std/os"
+use "std/json"
+use "std/string"
+
+start = os/time()
+
+-- Error-returning functions
+fn (num a, num b) num | str divide:
+    if b == 0:
+        return error("division by zero")
+    return a / b
+
+-- Catch at scale
+fn () num catch_stress:
+    successes = 0
+    i = 0
+    while i < 10000:
+        catch result = divide(i, i % 7):
+            i += 1
+            1
+        successes += 1
+        i += 1
+    return successes
+
+>> "Successful divides: " + str(catch_stress())
+
+-- Match at scale
+fn (num n) str classify:
+    match n % 15:
+        case 0:
+            return "fizzbuzz"
+        case 3:
+            return "fizz"
+        case 5:
+            return "buzz"
+        case 6:
+            return "fizz"
+        case 9:
+            return "fizz"
+        case 10:
+            return "buzz"
+        case 12:
+            return "fizz"
+        _:
+            return str(n)
+
+fn () str fizzbuzz:
+    result = []
+    i = 1
+    while i <= 100:
+        push(result, classify(i))
+        i += 1
+    return string/join(result, " ")
+
+>> "FizzBuzz: " + string/slice(fizzbuzz(), 0, 80) + "..."
+
+-- JSON round-trip stress
+fn () void json_stress:
+    i = 0
+    while i < 1000:
+        data = {"id": i, "name": "item-" + str(i), "tags": ["a", "b", "c"], "meta": {"score": i * 10, "active": true}}
+        text = json/stringify(data)
+        parsed = json/parse(text)
+        i += 1
+
+json_stress()
+>> "JSON 1K round-trips: done"
+
+-- Type checking at scale
+fn (num x) num safe_sqrt:
+    if x < 0:
+        return error("negative input")
+    if x == 0:
+        return 0
+    result = x
+    i = 0
+    while i < 20:
+        result = (result + x / result) / 2
+        i += 1
+    return result
+
+fn () void sqrt_stress:
+    i = 0
+    while i < 10000:
+        catch val = safe_sqrt(num(i)):
+            i += 1
+            1
+        i += 1
+
+sqrt_stress()
+>> "Newton sqrt 10K: done"
+
+elapsed = os/time() - start
+>> "Error handling perf: " + str(elapsed) + "s"

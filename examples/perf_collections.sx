@@ -1,0 +1,63 @@
+-- Performance: list and dict operations at scale
+
+use "std/list"
+use "std/os"
+
+start = os/time()
+
+-- Build large list
+items = []
+i = 0
+while i < 50000:
+    push(items, i)
+    i += 1
+>> "List of " + str(len(items)) + " items"
+
+-- Sort large list (reversed)
+reversed = []
+i = 49999
+while i >= 0:
+    push(reversed, i)
+    i -= 1
+sort(reversed)
+>> "Sorted: first=" + str(reversed[0]) + " last=" + str(reversed[49999])
+
+-- Filter large list
+evens = filter(items, fn(x) -> x % 2 == 0)
+>> "Even numbers: " + str(len(evens))
+
+-- Map large list
+doubled = map(items, fn(x) -> x * 2)
+>> "Doubled last: " + str(doubled[49999])
+
+-- Reduce
+total = reduce(items, fn(a, b) -> a + b, 0)
+>> "Sum 0..49999: " + str(total)
+
+-- Dict: insert 10K entries
+d = {}
+i = 0
+while i < 10000:
+    d[str(i)] = i * i
+    i += 1
+>> "Dict size: " + str(len(d))
+>> "d['5000']: " + str(d["5000"])
+
+-- Slice operations
+sliced = list/slice(items, 1000, 2000)
+>> "Slice [1000:2000] length: " + str(len(sliced))
+>> "Slice first: " + str(sliced[0]) + " last: " + str(sliced[999])
+
+-- Concat
+a = list/slice(items, 0, 100)
+b = list/slice(items, 100, 200)
+c = list/concat(a, b)
+>> "Concat length: " + str(len(c))
+
+-- Unique
+dups = [1, 2, 3, 1, 2, 3, 4, 5, 4, 5, 6]
+uniq = list/unique(dups)
+>> "Unique count: " + str(len(uniq))
+
+elapsed = os/time() - start
+>> "Collections perf: " + str(elapsed) + "s"
