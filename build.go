@@ -88,17 +88,27 @@ func clangCompile(irFile, outputFile string) error {
 	args = append(args, cFiles...)
 	args = append(args, "-lm")
 
-	// Check for Boehm GC
+	// Boehm GC is mandatory for memory safety
+	gcFound := false
 	for _, gcLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {
 		gcInclude := strings.Replace(gcLib, "/lib", "/include", 1)
 		for _, ext := range []string{"libgc.dylib", "libgc.a", "libgc.so"} {
 			if _, err := os.Stat(filepath.Join(gcLib, ext)); err == nil {
 				args = append(args, "-DSX_USE_GC", "-I"+gcInclude, "-L"+gcLib, "-lgc")
+				gcFound = true
 				goto foundGC
 			}
 		}
 	}
 foundGC:
+	if !gcFound {
+		fmt.Fprintf(os.Stderr, "Error: Boehm GC (libgc) is required but not found.\n")
+		fmt.Fprintf(os.Stderr, "Install it:\n")
+		fmt.Fprintf(os.Stderr, "  macOS:  brew install bdw-gc\n")
+		fmt.Fprintf(os.Stderr, "  Ubuntu: sudo apt install libgc-dev\n")
+		fmt.Fprintf(os.Stderr, "  Fedora: sudo dnf install gc-devel\n")
+		return fmt.Errorf("missing dependency: libgc")
+	}
 
 	// Check for libcurl (HTTP support)
 	for _, curlLib := range []string{"/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"} {

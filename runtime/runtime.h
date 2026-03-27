@@ -71,12 +71,16 @@ char* sx_strdup(const char *s);
 #include <gc.h>
 #define SX_MALLOC(size) GC_MALLOC(size)
 #define SX_REALLOC(ptr, size) GC_REALLOC(ptr, size)
-#define SX_FREE(ptr)
+#define SX_FREE(ptr) /* GC handles deallocation */
 #else
+#warning "Compiling without GC — all allocated memory will leak. Install libgc (Boehm GC)."
 #define SX_MALLOC(size) malloc(size)
 #define SX_REALLOC(ptr, size) realloc(ptr, size)
 #define SX_FREE(ptr) free(ptr)
 #endif
+
+// Initialization (call once at program start)
+void sx_gc_init(void);
 
 // Constructors
 SxValue* sx_number(double n);

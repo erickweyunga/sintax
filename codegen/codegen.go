@@ -68,6 +68,9 @@ func (cg *CodeGen) Generate(program *parser.Program) string {
 	cg.block = entry
 	cg.pushScope()
 
+	// Initialize garbage collector
+	cg.callRTVoid("sx_gc_init")
+
 	for _, stmt := range program.Statements {
 		cg.compileStatement(stmt)
 	}
@@ -152,6 +155,7 @@ var runtimeDecls = []rtDecl{
 	{"sx_dict_values", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_dict_has", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},
 	// Utilities
+	{"sx_gc_init", voidType, nil},
 	{"sx_len", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_sort", sxValuePtr, []types.Type{sxValuePtr}},
 	{"sx_map", sxValuePtr, []types.Type{sxValuePtr, sxValuePtr}},

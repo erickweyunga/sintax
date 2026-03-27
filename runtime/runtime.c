@@ -6,6 +6,14 @@
 #include <math.h>
 #include <ctype.h>
 
+// --- Initialization ---
+
+void sx_gc_init(void) {
+#ifdef SX_USE_GC
+    GC_INIT();
+#endif
+}
+
 // --- Memory helpers ---
 
 SxValue* sx_alloc(SxType type) {
