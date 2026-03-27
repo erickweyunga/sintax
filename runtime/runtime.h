@@ -29,7 +29,7 @@ typedef struct {
 typedef struct {
     char *key;
     SxValue *value;
-    int used;       // 0 = empty, 1 = occupied
+    int used;       // 0 = empty, 1 = occupied, 2 = tombstone (deleted)
 } SxDictBucket;
 
 // Dict structure (hash table + insertion-order keys)

@@ -172,19 +172,22 @@ SxValue* __native_replace(SxValue *v, SxValue *old, SxValue *new_) {
     expect_str(old, "replace");
     expect_str(new_, "replace");
     char *s = v->string, *o = old->string, *n = new_->string;
-    int olen = strlen(o), nlen = strlen(n), slen = strlen(s);
+    size_t olen = strlen(o), nlen = strlen(n), slen = strlen(s);
     if (olen == 0) return sx_string(s);
 
-    int count = 0;
+    size_t count = 0;
     char *p = s;
     while ((p = strstr(p, o)) != NULL) { count++; p += olen; }
 
-    char *result = (char*)SX_MALLOC(slen + count * (nlen - olen) + 1);
+    size_t result_len = slen + count * (nlen > olen ? nlen - olen : 0)
+                             - count * (olen > nlen ? olen - nlen : 0);
+    char *result = (char*)SX_MALLOC(result_len + 1);
+    if (!result) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     char *dst = result;
     p = s;
     char *found;
     while ((found = strstr(p, o)) != NULL) {
-        int chunk = found - p;
+        size_t chunk = found - p;
         memcpy(dst, p, chunk); dst += chunk;
         memcpy(dst, n, nlen); dst += nlen;
         p = found + olen;
@@ -208,13 +211,20 @@ SxValue* __native_read_file(SxValue *path) {
         if (!f) return sx_error_new(sx_string("Cannot read file"));
         size_t cap = 4096, total = 0;
         char *buf = (char*)SX_MALLOC(cap);
+        if (!buf) { fclose(f); return sx_error_new(sx_string("out of memory")); }
         size_t n;
         while ((n = fread(buf + total, 1, cap - total, f)) > 0) {
             total += n;
             if (total >= cap) {
                 cap *= 2;
-                buf = (char*)SX_REALLOC(buf, cap);
+                char *tmp = (char*)SX_REALLOC(buf, cap);
+                if (!tmp) { SX_FREE(buf); fclose(f); return sx_error_new(sx_string("out of memory")); }
+                buf = tmp;
             }
+        }
+        // Ensure room for null terminator
+        if (total >= cap) {
+            buf = (char*)SX_REALLOC(buf, total + 1);
         }
         buf[total] = '\0';
         fclose(f);
@@ -545,10 +555,8 @@ SxValue* __native_char_code(SxValue *v) {
 SxValue* __native_from_char_code(SxValue *v) {
     expect_num(v, "from_char_code");
     int code = (int)v->number;
-    if (code < 0 || code > 127) {
-        char buf[2] = {0, 0};
-        if (code >= 0 && code <= 0x7F) buf[0] = (char)code;
-        return sx_string(buf);
+    if (code < 0 || code > 255) {
+        return sx_error_new(sx_string("from_char_code: code out of range (0-255)"));
     }
     char buf[2] = {(char)code, '\0'};
     return sx_string(buf);
@@ -569,11 +577,14 @@ SxValue* __native_str_repeat(SxValue *v, SxValue *n) {
     expect_num(n, "str_repeat");
     int count = (int)n->number;
     if (count < 0) return sx_error_new(sx_string("str_repeat() count must be >= 0"));
-    int slen = strlen(v->string);
-    int total = slen * count;
+    size_t slen = strlen(v->string);
+    size_t total = slen * (size_t)count;
+    if (count > 0 && total / (size_t)count != slen) return sx_error_new(sx_string("str_repeat: result too large"));
+    if (total > 100 * 1024 * 1024) return sx_error_new(sx_string("str_repeat: result too large"));
     char *buf = (char*)SX_MALLOC(total + 1);
+    if (!buf) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     for (int i = 0; i < count; i++)
-        memcpy(buf + i * slen, v->string, slen);
+        memcpy(buf + (size_t)i * slen, v->string, slen);
     buf[total] = '\0';
     SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
 }
@@ -687,11 +698,11 @@ SxValue* __native_dict_delete(SxValue *dict, SxValue *key) {
     SxDictBucket *b = sx_dict_find(&dict->dict, key->string);
     if (!b || !b->used) return sx_null();
     SxValue *removed = b->value;
-    // Mark bucket as unused in hash table
+    // Mark bucket as tombstone so probing continues past it
     SX_FREE(b->key);
     b->key = NULL;
     b->value = NULL;
-    b->used = 0;
+    b->used = 2; // tombstone
     // Remove from insertion-order keys array
     for (int i = 0; i < dict->dict.len; i++) {
         if (strcmp(dict->dict.keys[i], key->string) == 0) {
@@ -758,7 +769,9 @@ SxValue* __native_format_time(SxValue *ts, SxValue *fmt) {
         else sfmt[j++] = src[i++];
     }
     sfmt[j] = '\0';
-    strftime(buf, sizeof(buf), sfmt, tm);
+    if (strftime(buf, sizeof(buf), sfmt, tm) == 0) {
+        buf[0] = '\0'; // Truncated — return empty rather than garbage
+    }
     return sx_string(buf);
 }
 

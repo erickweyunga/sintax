@@ -16,11 +16,19 @@ SxValue* sx_alloc(SxType type) {
 }
 
 char* sx_strdup(const char *s) {
+    if (!s) s = "";
     size_t len = strlen(s);
     char *dup = (char*)SX_MALLOC(len + 1);
     if (!dup) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     memcpy(dup, s, len + 1);
     return dup;
+}
+
+// Safe realloc — aborts on OOM instead of returning NULL.
+static void* sx_safe_realloc(void *ptr, size_t size) {
+    void *p = SX_REALLOC(ptr, size);
+    if (!p && size > 0) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
+    return p;
 }
 
 // --- Singletons (avoid allocation for common values) ---
@@ -121,11 +129,11 @@ static void sx_dict_resize(SxDict *d) {
 SxDictBucket* sx_dict_find(SxDict *d, const char *key) {
     unsigned long h = sx_hash(key) & (d->capacity - 1);
     int attempts = 0;
-    while (d->buckets[h].used) {
-        if (strcmp(d->buckets[h].key, key) == 0)
+    while (d->buckets[h].used) { // used == 1 (occupied) or 2 (tombstone)
+        if (d->buckets[h].used == 1 && strcmp(d->buckets[h].key, key) == 0)
             return &d->buckets[h];
         h = (h + 1) & (d->capacity - 1);
-        if (++attempts >= d->capacity) break; // prevent infinite loop
+        if (++attempts >= d->capacity) break;
     }
     return NULL;
 }
@@ -143,7 +151,9 @@ static void sx_dict_add_key(SxDict *d, const char *key) {
 // Allocate a heap cell for a captured variable.
 // Returns a pointer suitable for storing an SxValue*.
 void* sx_alloc_env(int64_t size) {
-    return SX_MALLOC(size);
+    void *p = SX_MALLOC(size);
+    if (!p && size > 0) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
+    return p;
 }
 
 SxValue* sx_closure(SxFnPtr fn, SxValue** env, int env_size) {
@@ -187,24 +197,31 @@ void sx_error(const char *msg) {
     exit(1);
 }
 
+// Null guard for operands
+#define SX_NULL_GUARD(v, ctx) if (!(v)) sx_error(ctx ": null operand")
+#define SX_NULL_GUARD2(a, b, ctx) do { SX_NULL_GUARD(a, ctx); SX_NULL_GUARD(b, ctx); } while(0)
+
 // --- String replace helper (used by sx_method and __native_replace) ---
 
 static SxValue* sx_string_replace_impl(const char *s, const char *old, const char *new_) {
-    int olen = strlen(old), nlen = strlen(new_), slen = strlen(s);
+    size_t olen = strlen(old), nlen = strlen(new_), slen = strlen(s);
     if (olen == 0) return sx_string(s);
 
     // Count occurrences
-    int count = 0;
+    size_t count = 0;
     const char *p = s;
     while ((p = strstr(p, old)) != NULL) { count++; p += olen; }
 
-    // Build result
-    char *result = (char*)SX_MALLOC(slen + count * (nlen - olen) + 1);
+    // Overflow check
+    size_t result_len = slen + count * (nlen > olen ? nlen - olen : 0)
+                             - count * (olen > nlen ? olen - nlen : 0);
+    char *result = (char*)SX_MALLOC(result_len + 1);
+    if (!result) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
     char *dst = result;
     p = s;
     const char *found;
     while ((found = strstr(p, old)) != NULL) {
-        int chunk = found - p;
+        size_t chunk = found - p;
         memcpy(dst, p, chunk); dst += chunk;
         memcpy(dst, new_, nlen); dst += nlen;
         p = found + olen;
@@ -219,17 +236,18 @@ static SxValue* sx_string_replace_impl(const char *s, const char *old, const cha
 // --- Method dispatch ---
 
 SxValue* sx_method(SxValue *obj, const char *name, SxValue **args, int argc) {
+    if (!obj) sx_error("method call on null value");
     // String methods
     if (obj->type == SX_STRING) {
         if (strcmp(name, "len") == 0) return sx_number(strlen(obj->string));
         if (strcmp(name, "upper") == 0) {
             char *s = sx_strdup(obj->string);
-            for (int i = 0; s[i]; i++) s[i] = toupper(s[i]);
+            for (int i = 0; s[i]; i++) s[i] = toupper((unsigned char)s[i]);
             SxValue *v = sx_alloc(SX_STRING); v->string = s; return v;
         }
         if (strcmp(name, "lower") == 0) {
             char *s = sx_strdup(obj->string);
-            for (int i = 0; s[i]; i++) s[i] = tolower(s[i]);
+            for (int i = 0; s[i]; i++) s[i] = tolower((unsigned char)s[i]);
             SxValue *v = sx_alloc(SX_STRING); v->string = s; return v;
         }
         if (strcmp(name, "trim") == 0) {
@@ -406,6 +424,7 @@ int sx_truthy(SxValue *a) {
 // --- Arithmetic ---
 
 SxValue* sx_add(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "+");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(a->number + b->number);
     if (a->type == SX_STRING && b->type == SX_STRING) {
@@ -422,6 +441,7 @@ SxValue* sx_add(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_sub(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "-");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(a->number - b->number);
     sx_error("Operation '-' requires num values");
@@ -429,17 +449,22 @@ SxValue* sx_sub(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_mul(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "*");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_number(a->number * b->number);
     // String * num → repeat string
     if (a->type == SX_STRING && b->type == SX_NUMBER) {
         int count = (int)b->number;
         if (count <= 0) return sx_string("");
-        int slen = strlen(a->string);
-        char *buf = (char*)SX_MALLOC(slen * count + 1);
+        size_t slen = strlen(a->string);
+        size_t total = slen * (size_t)count;
+        if (count > 0 && total / (size_t)count != slen) sx_error("string repeat: result too large");
+        if (total > 100 * 1024 * 1024) sx_error("string repeat: result too large");
+        char *buf = (char*)SX_MALLOC(total + 1);
+        if (!buf) { fprintf(stderr, "Error: out of memory\n"); exit(1); }
         for (int i = 0; i < count; i++)
             memcpy(buf + i * slen, a->string, slen);
-        buf[slen * count] = '\0';
+        buf[total] = '\0';
         SxValue *r = sx_alloc(SX_STRING); r->string = buf; return r;
     }
     if (a->type == SX_NUMBER && b->type == SX_STRING) {
@@ -450,6 +475,7 @@ SxValue* sx_mul(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_div(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "/");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER) {
         if (b->number == 0) sx_error("Division by zero");
         return sx_number(a->number / b->number);
@@ -459,6 +485,7 @@ SxValue* sx_div(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_mod(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "%%");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER) {
         if (b->number == 0) sx_error("Division by zero");
         return sx_number((double)((long long)a->number % (long long)b->number));
@@ -477,6 +504,7 @@ SxValue* sx_pow(SxValue *a, SxValue *b) {
 // --- Comparison ---
 
 SxValue* sx_eq(SxValue *a, SxValue *b) {
+    if (!a || !b) return sx_bool(a == b);
     if (a->type != b->type) return sx_bool(0);
     switch (a->type) {
         case SX_NUMBER: return sx_bool(a->number == b->number);
@@ -488,11 +516,13 @@ SxValue* sx_eq(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_neq(SxValue *a, SxValue *b) {
+    if (!a || !b) return sx_bool(a != b);
     SxValue *eq = sx_eq(a, b);
     return sx_bool(!eq->boolean);
 }
 
 SxValue* sx_gt(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, ">");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number > b->number);
     sx_error("Comparison '>' requires num values");
@@ -500,6 +530,7 @@ SxValue* sx_gt(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_lt(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "<");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number < b->number);
     sx_error("Comparison '<' requires num values");
@@ -507,6 +538,7 @@ SxValue* sx_lt(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_gte(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, ">=");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number >= b->number);
     sx_error("Comparison '>=' requires num values");
@@ -514,6 +546,7 @@ SxValue* sx_gte(SxValue *a, SxValue *b) {
 }
 
 SxValue* sx_lte(SxValue *a, SxValue *b) {
+    SX_NULL_GUARD2(a, b, "<=");
     if (a->type == SX_NUMBER && b->type == SX_NUMBER)
         return sx_bool(a->number <= b->number);
     sx_error("Comparison '<=' requires num values");
@@ -589,7 +622,7 @@ void sx_list_append(SxValue *list, SxValue *item) {
     if (list->type != SX_LIST) sx_error("push() first argument must be a list");
     if (list->list.len >= list->list.cap) {
         list->list.cap = list->list.cap == 0 ? 4 : list->list.cap * 2;
-        list->list.items = (SxValue**)SX_REALLOC(list->list.items, sizeof(SxValue*) * list->list.cap);
+        list->list.items = (SxValue**)sx_safe_realloc(list->list.items, sizeof(SxValue*) * list->list.cap);
     }
     list->list.items[list->list.len++] = item;
 }
@@ -616,6 +649,7 @@ SxValue* sx_list_remove(SxValue *list, SxValue *index) {
     if (list->type != SX_LIST) sx_error("pop() first argument must be a list");
     if (index->type != SX_NUMBER) sx_error("pop() second argument must be a num");
     int i = (int)index->number;
+    if (i < 0) i += list->list.len;
     if (i < 0 || i >= list->list.len) sx_error("Index out of range");
     SxValue *removed = list->list.items[i];
     for (int j = i; j < list->list.len - 1; j++)
@@ -805,6 +839,7 @@ SxValue* sx_in(SxValue *needle, SxValue *haystack) {
 // --- Utilities ---
 
 SxValue* sx_len(SxValue *v) {
+    if (!v) sx_error("len() called on null");
     switch (v->type) {
         case SX_STRING: return sx_number(strlen(v->string));
         case SX_LIST: return sx_number(v->list.len);
@@ -831,6 +866,8 @@ SxValue* sx_type(SxValue *v) {
 SxValue* sx_range(SxValue *start, SxValue *end) {
     if (start->type != SX_NUMBER || end->type != SX_NUMBER)
         sx_error("range() requires num arguments");
+    double count = end->number - start->number;
+    if (count > 10000000) sx_error("range() too large (max 10M elements)");
     SxValue *list = sx_list_new();
     for (double i = start->number; i < end->number; i++)
         sx_list_append(list, sx_number(i));
